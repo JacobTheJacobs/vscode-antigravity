@@ -690,6 +690,10 @@
         // First real signal; the dots are already up from submit().
         break;
       case "chunk":
+        // An empty delta is not the start of an answer. Opening a bubble on one
+        // tore down the thinking dots and left a blank turn sitting there while
+        // agy was still working.
+        if (!msg.text) break;
         if (!live) {
           stopElapsed();
           if (thinkingTurn) {
@@ -719,9 +723,13 @@
         }
         if (live) live.classList.remove("streaming");
         live = null;
-          // Do NOT chain the queue onto a failed run: "agy exited with code 1"
-          // would then repeat once per queued message. Hand them back instead.
-          drainQueueToInput();
+        // The host does follow every error with a 'done' today, but the panel
+        // should not depend on that ordering: an error arriving alone left the
+        // composer stuck in its stop state, with Enter still queueing.
+        setBusy(false);
+        // Do NOT chain the queue onto a failed run: "agy exited with code 1"
+        // would then repeat once per queued message. Hand them back instead.
+        drainQueueToInput();
         {
           const b = addTurn("error", msg.text || "Something went wrong.");
           if (msg.needsPermission) {
@@ -1131,7 +1139,9 @@
       });
     });
     openPicker(dir ? "/" + dir : "Workspace", rows, "tree",
-      dir ? "" : "folders and files");
+      // Say when a folder is empty. With only the ".." row it looked identical
+      // to a folder still loading, or to one whose contents had been filtered.
+      entries.length ? (dir ? "" : "folders and files") : "empty");
   }
 
   const plusBtn = document.getElementById("plusBtn");

@@ -1,0 +1,352 @@
+<!doctype html>
+<meta charset="utf-8">
+<link rel="stylesheet" href="ag.css">
+<style>
+  :root{--vscode-foreground:#cccccc;--vscode-descriptionForeground:#9d9d9d;
+    --vscode-editor-background:#1f1f1f;--vscode-sideBar-background:#181818;
+    --vscode-editorWidget-background:#202020;--vscode-editorWidget-border:#454545;
+    --vscode-input-background:#313131;--vscode-editor-font-family:Consolas,monospace;
+    --vscode-textLink-foreground:#4daafc;color-scheme:dark;}
+  html,body{margin:0;background:#181818;font:13px "Segoe UI",sans-serif;color:#ccc;}
+  #root{width:440px;height:640px;display:flex;flex-direction:column;}
+</style>
+<div id="root">
+<div class="statusbar"><span class="grow"></span>
+  <button id="historyBtn" class="chipbtn icon" type="button"></button>
+  <button id="newBtn" class="chipbtn icon" type="button"></button>
+</div>
+<div id="pickerTop" class="picker picker-top" hidden></div>
+<div id="log" class="log"></div>
+<div id="picker" class="picker" hidden></div>
+<form id="composer" class="composer"><div class="inputwrap">
+  <div id="queue" class="queue" hidden></div>
+  <div id="tray" class="tray" hidden></div>
+  <textarea id="input" rows="1" placeholder="Ask Antigravity…"></textarea>
+  <button id="micBtn" class="micbtn" type="button" hidden></button>
+  <div class="tools">
+    <button id="plusBtn" class="toolbtn" type="button">+</button>
+    <button id="slashBtn" class="toolbtn" type="button">/</button>
+    <span class="grow"></span>
+    <span id="usage" class="usage" hidden></span>
+    <span id="modelBtn" class="modelchip">agy</span>
+    <span id="effortBtn" class="modelchip effortchip"><span id="effortText">Default</span></span>
+    <span id="modeBtn" class="modelchip modechip"><span id="modeText">Auto</span></span>
+    <button id="send" class="sendbtn" type="submit">&uarr;</button>
+  </div>
+</div></form>
+</div>
+<script>
+  window.__sent = [];
+  window.__copied = [];
+  // navigator.clipboard is an accessor on the prototype, so a plain assignment
+  // is silently dropped and every copy assertion reads undefined.
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: { writeText: (t) => { window.__copied.push(t); return Promise.resolve(); } },
+  });
+  window.acquireVsCodeApi = function(){return {postMessage:function(m){window.__sent.push(m);},
+    getState:function(){return null;},setState:function(){}};};
+  window.__reply = function(m){window.dispatchEvent(new MessageEvent('message',{data:m}));};
+  window.onerror = function(msg){ window.__errors=(window.__errors||[]); window.__errors.push(String(msg)); };
+</script>
+<script src="markdown.js"></script>
+<script src="panel.js"></script>
+<script>
+  const log = [];
+  let pass = 0, fail = 0;
+  function sec(s){ log.push(''); log.push('— ' + s + ' —'); }
+  function check(label, fn, want) {
+    let got;
+    try { got = String(fn()); } catch (e) { got = 'THREW ' + e.message; }
+    const ok = want === undefined ? !/^THREW/.test(got) : got === String(want);
+    ok ? pass++ : fail++;
+    log.push((ok?'PASS  ':'FAIL  ')+label+': '+got+(ok||want===undefined?'':'   [want '+want+']'));
+  }
+  const P=()=>document.getElementById('picker'), PT=()=>document.getElementById('pickerTop');
+  const L=()=>document.getElementById('log'), TR=()=>document.getElementById('tray');
+  const Q=()=>document.getElementById('queue');
+  const input=document.getElementById('input'), form=document.getElementById('composer');
+  const send=document.getElementById('send');
+  const rows=(p)=>Array.prototype.slice.call((p||P()).querySelectorAll('.pick'));
+  const names=(p)=>rows(p).map(r=>(r.querySelector('.name')||{}).textContent);
+  const reset=()=>{__reply({type:'resumed',id:''});input.value='';window.__sent.length=0;};
+  const type=(t)=>{input.value=t;form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));};
+  const turn=(t)=>{reset();__reply({type:'chunk',text:t});__reply({type:'done'});};
+
+  /* ============ STREAMING ============ */
+  sec('streaming');
+  check('many chunks accumulate into one bubble', () => {
+    reset();
+    for (let i=0;i<200;i++) __reply({type:'chunk', text:'w'+i+' '});
+    __reply({type:'done'});
+    return L().querySelectorAll('.turn.assistant').length + ' bubble(s), len>' +
+      (L().querySelector('.turn.assistant .bubble').textContent.length > 500);
+  }, '1 bubble(s), len>true');
+  check('markdown resolves once the turn ends, not per chunk', () => {
+    reset();
+    '**bo'.split('').forEach(c => __reply({type:'chunk', text:c}));
+    __reply({type:'chunk', text:'ld** rest'});
+    __reply({type:'done'});
+    return L().querySelectorAll('.turn.assistant strong').length;
+  }, 1);
+  check('an empty chunk does not create a bubble', () => {
+    reset(); __reply({type:'chunk', text:''});
+    return L().querySelectorAll('.turn.assistant .bubble').length;
+  }, 0);
+  check('the thinking placeholder is replaced, not stacked', () => {
+    reset(); type('go');
+    __reply({type:'chunk', text:'answer'});
+    __reply({type:'done'});
+    return L().querySelectorAll('[data-thinking]').length;
+  }, 0);
+  check('resultText does not duplicate a streamed answer', () => {
+    reset(); type('go');
+    __reply({type:'chunk', text:'the answer'});
+    __reply({type:'resultText', text:'the answer', status:'SUCCESS'});
+    __reply({type:'done'});
+    const t = L().textContent;
+    return t.split('the answer').length - 1;
+  }, 1);
+  check('resultText alone still renders when nothing streamed', () => {
+    reset(); type('go');
+    __reply({type:'resultText', text:'only result', status:'SUCCESS'});
+    __reply({type:'done'});
+    return L().textContent.indexOf('only result') >= 0;
+  }, 'true');
+
+  /* ============ COPY ============ */
+  sec('copy');
+  check('a finished answer gets a copy control', () => {
+    turn('some answer'); return L().querySelectorAll('.turn-action.icon').length;
+  }, 1);
+  check('copying an answer copies the raw markdown, not the rendered text', () => {
+    turn('**bold** and `code`');
+    window.__copied.length = 0;
+    L().querySelector('.turn-action.icon').click();
+    return JSON.stringify(window.__copied[0]);
+  }, '"**bold** and `code`"');
+  check('a code block copy copies only the code', () => {
+    turn('text\n\n```js\nconst a = 1;\n```');
+    window.__copied.length = 0;
+    L().querySelector('[data-copy]').click();
+    return JSON.stringify(window.__copied[0].trim());
+  }, '"const a = 1;"');
+  check('/copy takes the last answer', () => {
+    reset();
+    __reply({type:'chunk', text:'first'}); __reply({type:'done'});
+    __reply({type:'chunk', text:'second'}); __reply({type:'done'});
+    window.__copied.length = 0;
+    type('/copy');
+    return JSON.stringify(window.__copied[0]);
+  }, '"second"');
+  check('a turn copy is added once, not per repaint', () => {
+    turn('x');
+    __reply({type:'done'});
+    return L().querySelectorAll('.turn-action').length;
+  }, 1);
+
+  /* ============ COMPOSER ============ */
+  sec('composer');
+  check('Shift+Enter does not submit', () => {
+    reset(); input.value = 'line one';
+    window.__sent.length = 0;
+    input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter', shiftKey:true, bubbles:true}));
+    return window.__sent.filter(m=>m.type==='send').length;
+  }, 0);
+  check('Enter submits', () => {
+    reset(); input.value = 'go';
+    window.__sent.length = 0;
+    input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter', bubbles:true}));
+    return window.__sent.filter(m=>m.type==='send').length;
+  }, 1);
+  check('whitespace only does not send', () => {
+    reset(); window.__sent.length = 0; type('    ');
+    return window.__sent.filter(m=>m.type==='send').length;
+  }, 0);
+  check('the input clears after sending', () => {
+    reset(); type('hello'); return JSON.stringify(input.value);
+  }, '""');
+  check('the textarea grows with content', () => {
+    reset();
+    const before = input.style.height;
+    input.value = 'x\n'.repeat(12);
+    input.dispatchEvent(new Event('input',{bubbles:true}));
+    return before !== input.style.height;
+  }, 'true');
+  check('the placeholder swaps while busy and restores after', () => {
+    reset();
+    const idle = input.placeholder;
+    type('go');
+    const busy = input.placeholder;
+    __reply({type:'done'});
+    return (busy !== idle) + '/' + (input.placeholder === idle);
+  }, 'true/true');
+  check('a leading/trailing space is trimmed off the sent text', () => {
+    reset(); window.__sent.length = 0; type('   padded   ');
+    return JSON.stringify(window.__sent.filter(m=>m.type==='send')[0].text);
+  }, '"padded"');
+
+  /* ============ MENUS ============ */
+  sec('menus');
+  check('only one menu is open at a time', () => {
+    reset();
+    __reply({type:'slash', query:'/', commands:[{name:'/a',description:'x'}]});
+    __reply({type:'sessions', sessions:[{id:'a',mtime:Date.now(),title:'t'}], current:''});
+    return 'bottom=' + !P().hidden + ', top=' + !PT().hidden;
+  }, 'bottom=false, top=true');
+  check('History opens at the TOP, commands at the bottom', () => {
+    reset(); __reply({type:'sessions', sessions:[{id:'a',mtime:Date.now(),title:'t'}], current:''});
+    const top = !PT().hidden;
+    reset(); __reply({type:'slash', query:'/', commands:[{name:'/a',description:'x'}]});
+    return 'history top=' + top + ', slash bottom=' + !P().hidden;
+  }, 'history top=true, slash bottom=true');
+  check('Escape closes a menu before it stops a turn', () => {
+    reset(); type('go');
+    __reply({type:'slash', query:'/', commands:[{name:'/a',description:'x'}]});
+    window.__sent.length = 0;
+    document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+    return 'menu=' + !P().hidden + ', stops=' + window.__sent.filter(m=>m.type==='stop').length;
+  }, 'menu=false, stops=0');
+  check('a second Escape then stops the turn', () => {
+    window.__sent.length = 0;
+    document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+    return window.__sent.filter(m=>m.type==='stop').length;
+  }, 1);
+  check('reopening the same menu closes it', () => {
+    reset(); __reply({type:'slash', query:'/', commands:[{name:'/a',description:'x'}]});
+    document.getElementById('slashBtn').click();
+    return !P().hidden;
+  }, 'false');
+  check('a new conversation closes any open menu', () => {
+    reset(); __reply({type:'slash', query:'/', commands:[{name:'/a',description:'x'}]});
+    document.getElementById('newBtn').click();
+    return !P().hidden;
+  }, 'false');
+
+  /* ============ TOGGLES / STATE ============ */
+  sec('execution state');
+  const exec = (o) => { reset(); __reply(Object.assign(
+    {type:'modes', mode:'', effort:'', sandbox:false, tools:false, folders:0, open:'effort'}, o||{})); };
+  check('sandbox on is reflected in the switch', () => {
+    exec({sandbox:true});
+    const r = rows().filter(x=>(x.querySelector('.name')||{}).textContent==='Sandbox')[0];
+    return r.querySelector('[data-toggle]').classList.contains('on');
+  }, 'true');
+  check('tool access on is reflected in the switch', () => {
+    exec({tools:true});
+    const r = rows().filter(x=>(x.querySelector('.name')||{}).textContent==='Tool access')[0];
+    return r.querySelector('[data-toggle]').classList.contains('on');
+  }, 'true');
+  check('a host update overrides a local toggle', () => {
+    exec({tools:true});
+    const r = () => rows().filter(x=>(x.querySelector('.name')||{}).textContent==='Tool access')[0];
+    r().querySelector('[data-toggle]').click();          // now off locally
+    exec({tools:true});                                   // host says on
+    return r().querySelector('[data-toggle]').classList.contains('on');
+  }, 'true');
+  check('the effort chip tracks the host', () => {
+    exec({effort:'high'});
+    return document.getElementById('effortText').textContent;
+  }, 'High');
+  check('the mode chip tracks the host', () => {
+    reset(); __reply({type:'modes', mode:'plan', effort:'', sandbox:false, tools:false, folders:0});
+    return document.getElementById('modeText').textContent;
+  }, 'Plan');
+  check('an absent field is not read as false', () => {
+    reset();
+    __reply({type:'modes', mode:'', effort:'high', sandbox:true, tools:true, folders:0});
+    __reply({type:'modes', mode:'', effort:'high', sandbox:true, tools:true, folders:0, open:'effort'});
+    const on = rows().filter(x=>['Sandbox','Tool access'].indexOf((x.querySelector('.name')||{}).textContent)>=0)
+      .map(x=>x.querySelector('[data-toggle]').classList.contains('on'));
+    return on.join(',');
+  }, 'true,true');
+
+  /* ============ UNICODE & LAYOUT ============ */
+  sec('unicode and layout');
+  check('emoji survive a round trip', () => {
+    turn('ship it 🚀🎉'); return L().textContent.indexOf('🚀🎉') >= 0;
+  }, 'true');
+  check('RTL text renders', () => {
+    turn('שלום עולם'); return L().textContent.indexOf('שלום') >= 0;
+  }, 'true');
+  check('CJK renders', () => { turn('你好世界'); return L().textContent.indexOf('你好') >= 0; }, 'true');
+  check('a zero-width char does not break rendering', () => {
+    turn('a​b'); return L().querySelectorAll('.bubble').length;
+  }, 1);
+  check('a 200-char tool name does not overflow the row', () => {
+    reset(); __reply({type:'tool', index:0, name:'t'.repeat(200), state:'DONE', seconds:1});
+    const row = document.querySelector('.turn.tool');
+    return row.getBoundingClientRect().width <= L().getBoundingClientRect().width + 1;
+  }, 'true');
+  check('a 120-char model id does not overflow the composer', () => {
+    reset(); __reply({type:'models', models:['m'.repeat(120)], current:'m'.repeat(120)});
+    const chip = document.getElementById('modelBtn');
+    const tools = document.querySelector('.tools');
+    return chip.getBoundingClientRect().width <= tools.getBoundingClientRect().width;
+  }, 'true');
+  check('a long queued message ellipsises rather than wrapping', () => {
+    reset(); type('go'); type('q'.repeat(300));
+    const t = Q().querySelector('.qtext');
+    return t.scrollWidth > t.clientWidth;
+  }, 'true');
+
+  /* ============ STORMS ============ */
+  sec('storms');
+  check('100 rapid sends do not double-send', () => {
+    reset(); window.__sent.length = 0;
+    for (let i=0;i<100;i++) type('m'+i);
+    return 'sent=' + window.__sent.filter(m=>m.type==='send').length +
+      ', queued=' + Q().querySelectorAll('.queueitem').length;
+  }, 'sent=1, queued=99');
+  check('the queue survives that intact and in order', () => {
+    const q = Array.prototype.slice.call(Q().querySelectorAll('.qtext')).map(n=>n.textContent);
+    return q[0] + '..' + q[q.length-1];
+  }, 'm1..m99');
+  check('300 interleaved events do not throw', () => {
+    reset();
+    for (let i=0;i<100;i++) {
+      __reply({type:'tool', index:i, name:'t'+i, state:'ACTIVE'});
+      __reply({type:'chunk', text:'c'+i});
+      __reply({type:'tool', index:i, name:'t'+i, state:'DONE', seconds:0.01});
+    }
+    __reply({type:'done'});
+    return 'tools=' + L().querySelectorAll('.turn.tool').length + ', errors=' + (window.__errors||[]).length;
+  }, 'tools=100, errors=0');
+  check('resetting after a storm empties everything', () => {
+    __reply({type:'resumed', id:''});
+    return 'turns=' + L().querySelectorAll('.turn').length +
+      ', queue=' + Q().querySelectorAll('.queueitem').length +
+      ', tray=' + TR().querySelectorAll('.chipimg').length;
+  }, 'turns=0, queue=0, tray=0');
+
+  /* ============ BYLINE ============ */
+  sec('empty state');
+  check('version and author render together', () => {
+    reset(); __reply({type:'version', version:'9.9.9', author:'Someone'});
+    return (L().querySelector('.empty-ver')||{}).textContent;
+  }, 'v9.9.9 · Someone');
+  check('version alone renders without a stray separator', () => {
+    reset(); __reply({type:'version', version:'9.9.9', author:''});
+    return (L().querySelector('.empty-ver')||{}).textContent;
+  }, 'v9.9.9');
+  check('the author link asks the host to open the repo', () => {
+    reset(); __reply({type:'version', version:'1', author:'Someone'});
+    window.__sent.length = 0;
+    L().querySelector('.empty-repo').click();
+    return JSON.stringify(window.__sent);
+  }, '[{"type":"openRepo"}]');
+  check('the empty state returns after a conversation is cleared', () => {
+    __reply({type:'chunk',text:'x'}); __reply({type:'done'});
+    __reply({type:'resumed', id:''});
+    return L().querySelectorAll('.empty').length;
+  }, 1);
+
+  sec('overall');
+  check('no uncaught errors across both suites', () =>
+    (window.__errors||[]).length + ((window.__errors||[]).length ? ': '+window.__errors[0] : ''), 0);
+
+  const out=document.createElement('pre'); out.id='result';
+  out.style.cssText='position:fixed;left:450px;top:0;color:#0f0;font:11px monospace;margin:0;white-space:pre-wrap;width:700px';
+  out.textContent=log.join('\n')+'\n\n'+pass+' passed, '+fail+' failed';
+  document.body.appendChild(out);
+</script>

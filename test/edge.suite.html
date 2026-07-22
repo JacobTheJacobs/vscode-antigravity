@@ -1,0 +1,546 @@
+<!doctype html>
+<meta charset="utf-8">
+<link rel="stylesheet" href="ag.css">
+<style>
+  :root{--vscode-foreground:#cccccc;--vscode-descriptionForeground:#9d9d9d;
+    --vscode-editor-background:#1f1f1f;--vscode-sideBar-background:#181818;
+    --vscode-editorWidget-background:#202020;--vscode-editorWidget-border:#454545;
+    --vscode-input-background:#313131;--vscode-editor-font-family:Consolas,monospace;
+    --vscode-textLink-foreground:#4daafc;color-scheme:dark;}
+  html,body{margin:0;background:#181818;font:13px "Segoe UI",sans-serif;color:#ccc;}
+  #root{width:440px;height:640px;display:flex;flex-direction:column;}
+</style>
+<div id="root">
+<div class="statusbar"><span class="grow"></span>
+  <button id="historyBtn" class="chipbtn icon" type="button"></button>
+  <button id="newBtn" class="chipbtn icon" type="button"></button>
+</div>
+<div id="pickerTop" class="picker picker-top" hidden></div>
+<div id="log" class="log"></div>
+<div id="picker" class="picker" hidden></div>
+<form id="composer" class="composer"><div class="inputwrap">
+  <div id="queue" class="queue" hidden></div>
+  <div id="tray" class="tray" hidden></div>
+  <textarea id="input" rows="1" placeholder="Ask Antigravity…"></textarea>
+  <button id="micBtn" class="micbtn" type="button" hidden></button>
+  <div class="tools">
+    <button id="plusBtn" class="toolbtn" type="button">+</button>
+    <button id="slashBtn" class="toolbtn" type="button">/</button>
+    <span class="grow"></span>
+    <span id="usage" class="usage" hidden></span>
+    <span id="modelBtn" class="modelchip">agy</span>
+    <span id="effortBtn" class="modelchip effortchip"><span id="effortText">Default</span></span>
+    <span id="modeBtn" class="modelchip modechip"><span id="modeText">Auto</span></span>
+    <button id="send" class="sendbtn" type="submit">&uarr;</button>
+  </div>
+</div></form>
+</div>
+<script>
+  window.__sent = [];
+  window.__xss = 0;
+  window.__pop = function(){ window.__xss++; };
+  window.acquireVsCodeApi = function(){return {postMessage:function(m){window.__sent.push(m);},
+    getState:function(){return null;},setState:function(){}};};
+  window.__reply = function(m){window.dispatchEvent(new MessageEvent('message',{data:m}));};
+  window.onerror = function(msg){ window.__errors = (window.__errors||[]); window.__errors.push(String(msg)); };
+</script>
+<script src="markdown.js"></script>
+<script src="panel.js"></script>
+<script>
+  const log = [];
+  let pass = 0, fail = 0, section = '';
+  function sec(s){ section = s; log.push(''); log.push('— ' + s + ' —'); }
+  function check(label, fn, want) {
+    let got;
+    try { got = String(fn()); } catch (e) { got = 'THREW ' + e.message; }
+    const ok = want === undefined ? got !== 'undefined' && !/^THREW/.test(got) : got === String(want);
+    ok ? pass++ : fail++;
+    log.push((ok ? 'PASS  ' : 'FAIL  ') + label + ': ' + got +
+             (ok || want === undefined ? '' : '   [want ' + want + ']'));
+  }
+  const P  = () => document.getElementById('picker');
+  const PT = () => document.getElementById('pickerTop');
+  const L  = () => document.getElementById('log');
+  const TR = () => document.getElementById('tray');
+  const Q  = () => document.getElementById('queue');
+  const input = document.getElementById('input');
+  const form  = document.getElementById('composer');
+  const send  = document.getElementById('send');
+  const rows = (p) => Array.prototype.slice.call((p||P()).querySelectorAll('.pick'));
+  const names = (p) => rows(p).map(r => (r.querySelector('.name')||{}).textContent);
+  const reset = () => { __reply({type:'resumed', id:''}); input.value=''; window.__sent.length = 0; };
+  const type = (t) => { input.value = t; form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})); };
+  const XSS = '<img src=x onerror=window.__pop()>';
+  const XSS2 = '"><script>window.__pop()<\/script>';
+
+  /* ============ 1. ESCAPING / XSS ============ */
+  sec('escaping: nothing model- or file-controlled reaches innerHTML');
+
+  check('an assistant answer cannot inject', () => {
+    reset(); window.__xss = 0;
+    __reply({type:'chunk', text: XSS});
+    __reply({type:'done'});
+    return 'fired=' + window.__xss + ', imgs=' + L().querySelectorAll('img[onerror]').length;
+  }, 'fired=0, imgs=0');
+
+  check('a script tag in an answer is inert', () => {
+    reset(); window.__xss = 0;
+    __reply({type:'chunk', text: XSS2});
+    __reply({type:'done'});
+    return 'fired=' + window.__xss + ', scripts=' + L().querySelectorAll('script').length;
+  }, 'fired=0, scripts=0');
+
+  check('a tool NAME cannot inject', () => {
+    reset(); window.__xss = 0;
+    __reply({type:'tool', index:0, name: XSS, state:'DONE', seconds:1});
+    return 'fired=' + window.__xss + ', text=' + (document.querySelector('.toolname')||{}).textContent.slice(0,13);
+  }, 'fired=0, text=<img src=x on');
+
+  check('a session TITLE cannot inject', () => {
+    reset(); window.__xss = 0;
+    __reply({type:'sessions', sessions:[{id:'a', mtime:Date.now(), title: XSS}], current:''});
+    return 'fired=' + window.__xss + ', imgs=' + PT().querySelectorAll('img').length;
+  }, 'fired=0, imgs=0');
+
+  check('a SKILL name/description cannot inject', () => {
+    reset(); window.__xss = 0;
+    __reply({type:'skills', skills:[{name: XSS, description: XSS}]});
+    return 'fired=' + window.__xss + ', imgs=' + P().querySelectorAll('img').length;
+  }, 'fired=0, imgs=0');
+
+  check('an MCP server name cannot inject', () => {
+    reset(); window.__xss = 0;
+    __reply({type:'mcp', servers:[{name: XSS, detail: XSS}]});
+    return 'fired=' + window.__xss + ', imgs=' + P().querySelectorAll('img').length;
+  }, 'fired=0, imgs=0');
+
+  check('a FILE path from findFiles cannot inject', () => {
+    reset(); window.__xss = 0;
+    input.value = '@x'; input.dispatchEvent(new Event('input',{bubbles:true}));
+    __reply({type:'files', files:[{rel: XSS, name: XSS}]});
+    return 'fired=' + window.__xss + ', imgs=' + P().querySelectorAll('img').length;
+  }, 'fired=0, imgs=0');
+
+  check('a TREE entry name cannot inject', () => {
+    reset(); window.__xss = 0;
+    __reply({type:'tree', dir:'', entries:[{name: XSS, dir:false, rel: XSS}]});
+    return 'fired=' + window.__xss + ', imgs=' + P().querySelectorAll('img').length;
+  }, 'fired=0, imgs=0');
+
+  check('a queued message cannot inject', () => {
+    reset(); window.__xss = 0;
+    type('running'); type(XSS);
+    return 'fired=' + window.__xss + ', imgs=' + Q().querySelectorAll('img').length;
+  }, 'fired=0, imgs=0');
+
+  check('an attachment NAME cannot inject', () => {
+    reset(); window.__xss = 0;
+    __reply({type:'pasted', path: XSS, name: XSS, src:''});
+    return 'fired=' + window.__xss + ', imgs=' + TR().querySelectorAll('img').length;
+  }, 'fired=0, imgs=0');
+
+  check('a media file NAME cannot inject', () => {
+    reset(); window.__xss = 0;
+    __reply({type:'chunk', text:'x'}); __reply({type:'done'});
+    __reply({type:'media', items:[{src:'data:image/gif;base64,R0lGOD', name: XSS, kind:'image', path: XSS}]});
+    return 'fired=' + window.__xss + ', onerror=' + L().querySelectorAll('img[onerror]').length;
+  }, 'fired=0, onerror=0');
+
+  check('a slash command description cannot inject', () => {
+    reset(); window.__xss = 0;
+    __reply({type:'slash', query:'/', commands:[{name:'/x', description: XSS}]});
+    return 'fired=' + window.__xss + ', imgs=' + P().querySelectorAll('img').length;
+  }, 'fired=0, imgs=0');
+
+  check('an error message cannot inject', () => {
+    reset(); window.__xss = 0;
+    __reply({type:'error', text: XSS});
+    return 'fired=' + window.__xss + ', imgs=' + L().querySelectorAll('img').length;
+  }, 'fired=0, imgs=0');
+
+  check('a model id cannot inject', () => {
+    reset(); window.__xss = 0;
+    __reply({type:'models', models:[XSS], current:'', open:true});
+    return 'fired=' + window.__xss + ', imgs=' + P().querySelectorAll('img').length;
+  }, 'fired=0, imgs=0');
+
+  check('a version/author cannot inject', () => {
+    reset(); window.__xss = 0;
+    __reply({type:'version', version: XSS, author: XSS});
+    return 'fired=' + window.__xss + ', imgs=' + L().querySelectorAll('img').length;
+  }, 'fired=0, imgs=0');
+
+  check('a connection detail cannot inject', () => {
+    reset(); window.__xss = 0;
+    __reply({type:'status', connected:false, detail: XSS});
+    return 'fired=' + window.__xss + ', imgs=' + L().querySelectorAll('img').length;
+  }, 'fired=0, imgs=0');
+
+  /* ============ 2. MARKDOWN ============ */
+  sec('markdown');
+  const md = (s) => { reset(); __reply({type:'chunk', text:s}); __reply({type:'done'});
+                      return document.querySelector('.turn.assistant .bubble'); };
+
+  check('a fenced block becomes code, not paragraphs', () =>
+    md('```js\nconst a = 1;\n```').querySelectorAll('pre code').length, 1);
+  check('an UNCLOSED fence still renders while streaming', () =>
+    md('```js\nconst a = 1;').querySelectorAll('pre code').length, 1);
+  check('inline code renders', () => md('use `npm run compile` now').querySelectorAll('code').length, 1);
+  check('bold and italic render', () => {
+    const b = md('**bold** and *italic*');
+    return b.querySelectorAll('strong').length + '/' + b.querySelectorAll('em').length;
+  }, '1/1');
+  check('a list renders as a list', () => md('- one\n- two\n- three').querySelectorAll('li').length, 3);
+  check('headings render', () => md('### A heading').querySelectorAll('h3,h4,h5,h6').length, 1);
+  check('a code block gets a copy control', () => md('```\nx\n```').querySelectorAll('[data-copy]').length, 1);
+  check('html inside a fence stays text', () => {
+    window.__xss = 0;
+    const b = md('```\n' + XSS + '\n```');
+    return 'fired=' + window.__xss + ', imgs=' + b.querySelectorAll('img').length;
+  }, 'fired=0, imgs=0');
+  check('an empty answer opens no bubble at all', () => {
+    reset(); __reply({type:'chunk', text:''}); __reply({type:'done'});
+    return document.querySelectorAll('.turn.assistant .bubble').length;
+  }, 0);
+  check('a lone backtick does not crash', () => md('`').className, 'bubble');
+  check('a very long single line renders', () => md('x'.repeat(20000)).textContent.length, 20000);
+
+  /* ============ 3. TOOL ROWS ============ */
+  sec('tool rows');
+  check('out-of-order indices each get a row', () => {
+    reset();
+    __reply({type:'tool', index:5, name:'e', state:'DONE', seconds:1});
+    __reply({type:'tool', index:2, name:'b', state:'DONE', seconds:1});
+    return document.querySelectorAll('.turn.tool').length;
+  }, 2);
+  check('a missing duration says done rather than NaN', () => {
+    reset(); __reply({type:'tool', index:0, name:'t', state:'DONE'});
+    return document.querySelector('.toolmeta').textContent;
+  }, 'done');
+  check('a zero duration shows 0.00s, not blank', () => {
+    reset(); __reply({type:'tool', index:0, name:'t', state:'DONE', seconds:0});
+    return document.querySelector('.toolmeta').textContent;
+  }, '0.00s');
+  check('an unknown state does not crash', () => {
+    reset(); __reply({type:'tool', index:0, name:'t', state:'WEIRD'});
+    return document.querySelectorAll('.turn.tool').length;
+  }, 1);
+  check('a missing name renders blank, never the word undefined', () => {
+    reset(); __reply({type:'tool', index:0, state:'DONE', seconds:1});
+    return JSON.stringify(document.querySelector('.toolname').textContent);
+  }, '""');
+  check('ACTIVE then ERROR ends as error', () => {
+    reset();
+    __reply({type:'tool', index:0, name:'t', state:'ACTIVE'});
+    __reply({type:'tool', index:0, name:'t', state:'ERROR'});
+    return document.querySelector('.turn.tool').dataset.state;
+  }, 'error');
+  check('tool rows clear on a new conversation', () => {
+    __reply({type:'resumed', id:''});
+    return document.querySelectorAll('.turn.tool').length;
+  }, 0);
+  check('50 tool rows do not crash', () => {
+    reset();
+    for (let i=0;i<50;i++) __reply({type:'tool', index:i, name:'t'+i, state:'DONE', seconds:0.1});
+    return document.querySelectorAll('.turn.tool').length;
+  }, 50);
+
+  /* ============ 4. USAGE ============ */
+  sec('token counts');
+  const usage = (u) => { reset(); __reply({type:'usage', usage:u, final:true});
+                         return document.getElementById('usage'); };
+  check('usage renders in/out', () => usage({input_tokens:3820, output_tokens:214}).textContent, '3.8k in · 214 out');
+  check('zeros render as 0, not blank', () => usage({input_tokens:0, output_tokens:0}).textContent, '0 in · 0 out');
+  check('missing fields fall back to 0', () => usage({}).textContent, '0 in · 0 out');
+  check('a huge count is abbreviated', () => usage({input_tokens:1234567, output_tokens:2}).textContent, '1235k in · 2 out');
+  check('thinking tokens live in the tooltip, not the row', () => {
+    const el = usage({input_tokens:1, output_tokens:1, thinking_tokens:900, total_tokens:902});
+    return 'row=' + (el.textContent.indexOf('think') === -1) + ', title=' + (el.title.indexOf('900') >= 0);
+  }, 'row=true, title=true');
+  check('usage clears on a new conversation', () => {
+    usage({input_tokens:5, output_tokens:5});
+    __reply({type:'resumed', id:''});
+    return document.getElementById('usage').hidden;
+  }, 'true');
+
+  /* ============ 5. QUEUE ============ */
+  sec('queue');
+  check('an empty submit while busy queues nothing', () => {
+    reset(); type('go'); input.value = '   ';
+    form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
+    return Q().querySelectorAll('.queueitem').length;
+  }, 0);
+  check('order is preserved across five', () => {
+    reset(); type('go');
+    ['a','b','c','d','e'].forEach(type);
+    return Array.prototype.slice.call(Q().querySelectorAll('.qtext')).map(n=>n.textContent).join('');
+  }, 'abcde');
+  check('removing the middle keeps the rest in order', () => {
+    Q().querySelectorAll('.qx')[2].click();
+    return Array.prototype.slice.call(Q().querySelectorAll('.qtext')).map(n=>n.textContent).join('');
+  }, 'abde');
+  check('removing them all hides the tray', () => {
+    while (Q().querySelector('.qx')) Q().querySelector('.qx').click();
+    return Q().hidden;
+  }, 'true');
+  check('a slash command while busy is NOT queued', () => {
+    reset(); type('go');
+    window.__sent.length = 0;
+    type('/clear');
+    return 'queued=' + Q().querySelectorAll('.queueitem').length +
+      ', posted=' + JSON.stringify(window.__sent.map(m=>m.type));
+  }, 'queued=0, posted=["newSession"]');
+  check('a queued message survives a tool error mid-turn', () => {
+    reset(); type('go'); type('later');
+    __reply({type:'tool', index:0, name:'t', state:'ERROR'});
+    return Q().querySelectorAll('.queueitem').length;
+  }, 1);
+
+  /* ============ 6. SLASH ============ */
+  sec('slash commands');
+  check('an unknown command is not swallowed', () => {
+    reset(); window.__sent.length = 0;
+    type('/definitelynotacommand');
+    return JSON.stringify(window.__sent.map(m=>m.type));
+  });
+  check('uppercase is accepted', () => {
+    reset(); window.__sent.length = 0; type('/CLEAR');
+    return JSON.stringify(window.__sent.map(m=>m.type));
+  }, '["newSession"]');
+  check('a TUI-only row is marked', () => {
+    reset();
+    __reply({type:'slash', query:'/', commands:[{name:'/btw', description:'x', target:'session'}]});
+    return P().querySelectorAll('.tui').length;
+  }, 1);
+  check('an empty catalog says nothing to show', () => {
+    reset(); __reply({type:'slash', query:'/zzz', commands:[]});
+    return P().textContent.toLowerCase().indexOf('nothing') >= 0;
+  }, 'true');
+  check('a 40-row catalog still renders', () => {
+    reset();
+    const many = []; for (let i=0;i<40;i++) many.push({name:'/c'+i, description:'d'+i});
+    __reply({type:'slash', query:'/', commands:many});
+    return rows().length;
+  }, 40);
+
+  /* ============ 7. EFFORT SLIDER ============ */
+  sec('effort slider');
+  const slider = () => { reset(); __reply({type:'modes',mode:'',effort:'medium',sandbox:false,tools:false,folders:0,open:'effort'});
+                         return P().querySelector('[data-slider="effort"]'); };
+  check('dragging past the right end clamps to High', () => {
+    const el = slider(), r = el.getBoundingClientRect();
+    el.dispatchEvent(new PointerEvent('pointerdown',{clientX:r.right+500,bubbles:true}));
+    document.dispatchEvent(new PointerEvent('pointerup',{clientX:r.right+500,bubbles:true}));
+    return el.getAttribute('aria-valuetext');
+  }, 'High');
+  check('dragging past the left end clamps to Default', () => {
+    const el = P().querySelector('[data-slider="effort"]'), r = el.getBoundingClientRect();
+    el.dispatchEvent(new PointerEvent('pointerdown',{clientX:r.left-500,bubbles:true}));
+    document.dispatchEvent(new PointerEvent('pointerup',{clientX:r.left-500,bubbles:true}));
+    return el.getAttribute('aria-valuetext');
+  }, 'Default');
+  check('ArrowLeft at the floor stays at the floor', () => {
+    const el = P().querySelector('[data-slider="effort"]');
+    el.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}));
+    return el.getAttribute('aria-valuetext');
+  }, 'Default');
+  check('ArrowRight at the ceiling stays at the ceiling', () => {
+    const el = P().querySelector('[data-slider="effort"]');
+    el.dispatchEvent(new KeyboardEvent('keydown',{key:'End',bubbles:true}));
+    el.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
+    return el.getAttribute('aria-valuetext');
+  }, 'High');
+  check('an unrelated key does not move it', () => {
+    const el = P().querySelector('[data-slider="effort"]');
+    window.__sent.length = 0;
+    el.dispatchEvent(new KeyboardEvent('keydown',{key:'a',bubbles:true}));
+    return el.getAttribute('aria-valuetext') + ', posts=' + window.__sent.length;
+  }, 'High, posts=0');
+  check('a click without a move still commits once', () => {
+    const el = slider(), r = el.getBoundingClientRect();
+    window.__sent.length = 0;
+    const x = r.left + r.width/3;
+    el.dispatchEvent(new PointerEvent('pointerdown',{clientX:x,bubbles:true}));
+    document.dispatchEvent(new PointerEvent('pointerup',{clientX:x,bubbles:true}));
+    return window.__sent.length + ':' + JSON.stringify(window.__sent[0]);
+  }, '1:{"type":"setEffort","effort":"low"}');
+
+  /* ============ 8. HISTORY ============ */
+  sec('history');
+  check('a session with no title reads Untitled', () => {
+    reset(); __reply({type:'sessions', sessions:[{id:'a', mtime:Date.now(), title:''}], current:''});
+    return names(PT())[0];
+  }, 'Untitled conversation');
+  check('an empty history says nothing to show', () => {
+    reset(); __reply({type:'sessions', sessions:[], current:''});
+    return PT().textContent.toLowerCase().indexOf('nothing') >= 0;
+  }, 'true');
+  check('a future timestamp does not crash', () => {
+    reset(); __reply({type:'sessions', sessions:[{id:'a', mtime:Date.now()+9e8, title:'x'}], current:''});
+    return rows(PT()).length;
+  }, 1);
+  check('mtime 0 renders a date rather than NaN', () => {
+    reset(); __reply({type:'sessions', sessions:[{id:'a', mtime:0, title:'x'}], current:''});
+    const m = (PT().querySelector('.meta')||{}).textContent || '';
+    return m.indexOf('NaN') === -1 && m.length > 0;
+  }, 'true');
+  check('a 400-char title does not break the row', () => {
+    reset(); __reply({type:'sessions', sessions:[{id:'a', mtime:Date.now(), title:'z'.repeat(400)}], current:''});
+    const n = PT().querySelector('.name');
+    return n.scrollWidth > n.clientWidth;
+  }, 'true');
+  check('choosing a session posts its id', () => {
+    window.__sent.length = 0;
+    rows(PT())[0].click();
+    return JSON.stringify(window.__sent);
+  }, '[{"type":"resumeSession","id":"a"}]');
+  check('30 sessions all render', () => {
+    reset();
+    const many = []; for (let i=0;i<30;i++) many.push({id:'s'+i, mtime:Date.now()-i*3600e3, title:'t'+i});
+    __reply({type:'sessions', sessions:many, current:'s3'});
+    return rows(PT()).length + ', marked=' + PT().querySelectorAll('.pick.on').length;
+  }, '30, marked=1');
+
+  /* ============ 9. CONTEXT ============ */
+  sec('context edges');
+  check('no matching files says nothing to show', () => {
+    reset(); input.value='@zzz'; input.dispatchEvent(new Event('input',{bubbles:true}));
+    __reply({type:'files', files:[]});
+    return P().textContent.toLowerCase().indexOf('nothing') >= 0;
+  }, 'true');
+  check('a path with spaces inserts whole', () => {
+    reset(); input.value='@my'; input.dispatchEvent(new Event('input',{bubbles:true}));
+    __reply({type:'files', files:[{rel:'my folder/a b.txt', name:'a b.txt'}]});
+    rows()[0].click();
+    return JSON.stringify(input.value);
+  }, '"@my folder/a b.txt "');
+  check('an @ mid-word does not trigger a lookup', () => {
+    reset(); window.__sent.length = 0;
+    input.value='email@example.com'; input.dispatchEvent(new Event('input',{bubbles:true}));
+    return window.__sent.filter(m=>m.type==='findFiles').length;
+  }, 0);
+  check('an empty folder says it is empty', () => {
+    reset(); __reply({type:'tree', dir:'src', entries:[]});
+    return P().textContent.toLowerCase().indexOf('empty') >= 0;
+  }, 'true');
+  check('a deep path keeps its parents', () => {
+    reset(); __reply({type:'tree', dir:'a/b/c/d', entries:[{name:'e', dir:true, rel:'a/b/c/d/e'}]});
+    window.__sent.length = 0;
+    rows()[0].click();
+    return JSON.stringify(window.__sent);
+  }, '[{"type":"browse","path":"a/b/c"}]');
+  check('200 entries render', () => {
+    reset();
+    const many=[]; for(let i=0;i<200;i++) many.push({name:'f'+i, dir:false, rel:'f'+i});
+    __reply({type:'tree', dir:'', entries:many});
+    return rows().length;
+  }, 200);
+  check('an attachment with no thumbnail still chips', () => {
+    reset(); __reply({type:'pasted', path:'x.png', name:'x.png', src:''});
+    return TR().querySelectorAll('.chipimg').length + '/' + TR().querySelectorAll('img').length;
+  }, '1/0');
+  check('a failed paste reports rather than silently dropping', () => {
+    reset(); __reply({type:'pasteFailed', reason:'disk full'});
+    return L().querySelectorAll('.turn.error').length;
+  }, 1);
+  check('media with an empty list adds nothing', () => {
+    reset(); __reply({type:'chunk',text:'x'}); __reply({type:'done'});
+    __reply({type:'media', items:[]});
+    return L().querySelectorAll('.media').length;
+  }, 0);
+  check('a video item renders a video element', () => {
+    reset(); __reply({type:'chunk',text:'x'}); __reply({type:'done'});
+    __reply({type:'media', items:[{src:'x.mp4', name:'x.mp4', kind:'video', path:'x.mp4'}]});
+    return L().querySelectorAll('.media video').length;
+  }, 1);
+  check('media only attaches once per turn', () => {
+    __reply({type:'media', items:[{src:'y.png', name:'y.png', kind:'image', path:'y.png'}]});
+    return L().querySelectorAll('.media').length;
+  }, 1);
+
+  /* ============ 10. CONNECTION + LIFECYCLE ============ */
+  sec('connection and lifecycle');
+  check('connecting shows a connecting line', () => {
+    reset(); __reply({type:'status', connecting:true});
+    return L().querySelectorAll('.empty-conn').length;
+  }, 1);
+  check('connected clears it', () => {
+    __reply({type:'status', connected:true, version:'1', path:'agy'});
+    return L().querySelectorAll('.empty-conn.bad').length + '/' + L().querySelectorAll('.empty-connect').length;
+  }, '0/0');
+  check('failure offers Connect', () => {
+    __reply({type:'status', connected:false, detail:'nope'});
+    return L().querySelectorAll('.empty-connect').length;
+  }, 1);
+  check('Connect posts connect', () => {
+    window.__sent.length = 0;
+    L().querySelector('.empty-connect').click();
+    return JSON.stringify(window.__sent);
+  }, '[{"type":"connect"}]');
+  check('a status change does NOT wipe an existing transcript', () => {
+    reset(); __reply({type:'chunk', text:'kept'}); __reply({type:'done'});
+    __reply({type:'status', connected:false, detail:'x'});
+    return L().textContent.indexOf('kept') >= 0;
+  }, 'true');
+  check('New clears the transcript', () => {
+    __reply({type:'resumed', id:''});
+    return L().querySelectorAll('.turn').length;
+  }, 0);
+  check('stop leaves the composer usable', () => {
+    reset(); type('go');
+    __reply({type:'done', stopped:true});
+    return 'busy=' + send.classList.contains('stop') + ', disabled=' + input.disabled;
+  }, 'busy=false, disabled=false');
+  check('an error clears the busy state', () => {
+    reset(); type('go');
+    __reply({type:'error', text:'boom'});
+    return send.classList.contains('stop');
+  }, 'false');
+  check('two dones in a row do not crash', () => {
+    reset(); type('go'); __reply({type:'done'}); __reply({type:'done'});
+    return 'ok';
+  }, 'ok');
+  check('a chunk after done starts a new bubble rather than throwing', () => {
+    reset(); __reply({type:'chunk',text:'a'}); __reply({type:'done'});
+    __reply({type:'chunk',text:'b'});
+    return L().querySelectorAll('.turn.assistant').length >= 1;
+  }, 'true');
+
+  /* ============ 11. MODES / MODEL ============ */
+  sec('modes and model');
+  check('mode picker offers exactly three', () => {
+    reset(); __reply({type:'modes', mode:'', effort:'', sandbox:false, tools:false, folders:0, open:'mode'});
+    return names().join('/');
+  }, 'Auto/Plan/Accept edits');
+  check('the current mode is marked', () => {
+    reset(); __reply({type:'modes', mode:'plan', effort:'', sandbox:false, tools:false, folders:0, open:'mode'});
+    return (P().querySelector('.pick.on .name')||{}).textContent;
+  }, 'Plan');
+  check('Shift+Tab cycles the mode', () => {
+    reset(); window.__sent.length = 0;
+    document.dispatchEvent(new KeyboardEvent('keydown',{key:'Tab', shiftKey:true, bubbles:true}));
+    return JSON.stringify(window.__sent.filter(m=>m.type==='setMode'));
+  });
+  check('an empty model list still opens with a row', () => {
+    reset(); __reply({type:'models', models:[], current:'', open:true});
+    return P().textContent.length > 0;
+  }, 'true');
+  check('choosing a model posts it', () => {
+    reset(); __reply({type:'models', models:['gemini-3.6-flash'], current:'', open:true});
+    window.__sent.length = 0;
+    rows()[0].click();
+    return JSON.stringify(window.__sent.filter(m=>m.type==='setModel').map(m=>m.model));
+  }, '["gemini-3.6-flash"]');
+
+  /* ============ 12. NO SCRIPT ERRORS ============ */
+  sec('overall');
+  check('no uncaught errors during the whole run', () =>
+    (window.__errors||[]).length + (window.__errors ? ': ' + window.__errors[0] : ''), 0);
+  check('no XSS fired anywhere', () => window.__xss, 0);
+
+  const out = document.createElement('pre');
+  out.id = 'result';
+  out.style.cssText = 'position:fixed;left:450px;top:0;color:#0f0;font:11px monospace;margin:0;white-space:pre-wrap;width:700px';
+  out.textContent = log.join('\n') + '\n\n' + pass + ' passed, ' + fail + ' failed';
+  document.body.appendChild(out);
+</script>
