@@ -495,6 +495,22 @@
   window.addEventListener("message", (event) => {
     const msg = event.data || {};
     switch (msg.type) {
+      case "toolsDenied": {
+        const b = addTurn("error", msg.text || "A tool was denied.");
+        const fix = document.createElement("button");
+        fix.className = "chipbtn";
+        fix.type = "button";
+        fix.textContent = "Enable tool access";
+        fix.style.marginTop = "8px";
+        fix.addEventListener("click", () => {
+          currentTools = true;
+          vscode.postMessage({ type: "setTools", on: true });
+          fix.textContent = "Enabled — ask again";
+          fix.disabled = true;
+        });
+        b.parentElement.appendChild(fix);
+        break;
+      }
       case "media":
         showMedia(msg.items);
         break;
@@ -532,6 +548,7 @@
         currentMode = msg.mode || "";
         currentEffort = msg.effort || "";
         currentSandbox = !!msg.sandbox;
+        currentTools = !!msg.tools;
         extraFolders = msg.folders || 0;
         paintMode();
         paintEffort();
@@ -760,6 +777,7 @@
   let currentMode = "";
   let currentEffort = "";
   let currentSandbox = false;
+  let currentTools = false;
   let extraFolders = 0;
 
   const MODE_LABEL = { "": "Auto", "plan": "Plan", "accept-edits": "Accept edits" };
@@ -1116,6 +1134,9 @@
         control: effortSliderHtml(), controlKind: "effort" },
       { act: "noop", value: "", name: "Sandbox", meta: "restrict terminal access",
         control: toggleHtml("sandbox", currentSandbox), controlKind: "sandbox" },
+      { act: "noop", value: "", name: "Tool access",
+        meta: "let agy read files and run commands without asking",
+        control: toggleHtml("tools", currentTools), controlKind: "tools" },
     ], "effort");
   }
 
@@ -1136,8 +1157,9 @@
   function repaint(el, kind) {
     const holder = el.closest(".rowcontrol, .picker-custom");
     if (!holder) return;
-    holder.innerHTML = kind === "effort"
-      ? effortSliderHtml()
+    holder.innerHTML =
+      kind === "effort" ? effortSliderHtml()
+      : kind === "tools" ? toggleHtml("tools", currentTools)
       : toggleHtml("sandbox", currentSandbox);
   }
 
@@ -1147,9 +1169,15 @@
     if (e.target.closest('[data-slider="effort"]')) return true;
     const sw = e.target.closest("[data-toggle]");
     if (sw) {
-      currentSandbox = !currentSandbox;
-      vscode.postMessage({ type: "setSandbox", on: currentSandbox });
-      repaint(sw, "sandbox");
+      const which = sw.dataset.toggle;
+      if (which === "tools") {
+        currentTools = !currentTools;
+        vscode.postMessage({ type: "setTools", on: currentTools });
+      } else {
+        currentSandbox = !currentSandbox;
+        vscode.postMessage({ type: "setSandbox", on: currentSandbox });
+      }
+      repaint(sw, which);
       return true;
     }
     return false;

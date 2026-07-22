@@ -60,6 +60,8 @@ export class AgyChatViewProvider implements vscode.WebviewViewProvider {
     /** When the current turn started, so freshMedia() can tell what it wrote
      *  apart from every picture generated earlier. */
     private runStartedAt = 0;
+    /** Set when any tool in this turn came back ERROR. */
+    private toolDenied = false;
 
     constructor(private readonly context: vscode.ExtensionContext) {}
 
@@ -79,6 +81,23 @@ export class AgyChatViewProvider implements vscode.WebviewViewProvider {
 
     private get sandbox(): boolean {
         return this.context.globalState.get<boolean>('antigravity.sandbox', false);
+    }
+
+    /**
+     * Whether agy may run its tools without asking.
+     *
+     * Print mode starts in permission_mode "request-review", and there is no
+     * way to answer a review from a webview — so list_dir, view_file and
+     * run_command all come back ERROR. Measured: the same prompt gives
+     * list_dir:ERROR by default and list_dir:DONE with
+     * --dangerously-skip-permissions, which flips the mode to always-proceed.
+     *
+     * Off by default, because that flag auto-approves shell commands and file
+     * writes as well as reads. --mode accept-edits does NOT do this; it was
+     * checked and leaves permission_mode untouched.
+     */
+    private get tools(): boolean {
+        return this.context.globalState.get<boolean>('antigravity.tools', false);
     }
 
     /** Start a fresh conversation (command palette + /clear). */
@@ -211,6 +230,7 @@ export class AgyChatViewProvider implements vscode.WebviewViewProvider {
             mode: this.mode,
             effort: this.effort,
             sandbox: this.sandbox,
+            tools: this.tools,
             folders: this.extraWorkspaceDirs().length,
             open,
         });
@@ -633,6 +653,10 @@ export class AgyChatViewProvider implements vscode.WebviewViewProvider {
                 this.context.globalState.update('antigravity.mode', String(msg.mode ?? ''));
                 this.postModes();
                 break;
+            case 'setTools':
+                this.context.globalState.update('antigravity.tools', !!msg.on);
+                this.postModes();
+                break;
             case 'setSandbox':
                 this.context.globalState.update('antigravity.sandbox', !!msg.on);
                 this.postModes();
@@ -875,6 +899,14 @@ export class AgyChatViewProvider implements vscode.WebviewViewProvider {
         }
 
         if (ev.event === 'step_update') {
+            // Remember that a tool was refused. agy does not fail the turn over
+            // it — the model just works around the missing tool and answers
+            // anyway, which is how "list_dir failed" turned into a request for
+            // paths the user had already given.
+            if (ev.step_update?.step_type === 'tool' &&
+                String(ev.step_update?.state).toUpperCase() === 'ERROR') {
+                this.toolDenied = true;
+            }
             const s = ev.step_update || {};
             if (s.step_type === 'tool') {
                 this.post({
@@ -900,6 +932,17 @@ export class AgyChatViewProvider implements vscode.WebviewViewProvider {
             // text_delta arrived, so a normal turn is not rendered twice.
             const answer = String(r.response || '');
             this.post({ type: 'resultText', text: answer, status: r.status });
+            // Say so. A turn where the tools were refused still reads as a
+            // normal answer, and the user is left believing agy looked.
+            if (this.toolDenied && !this.tools) {
+                this.post({
+                    type: 'toolsDenied',
+                    text: 'A tool was denied: agy starts in "request-review", and a ' +
+                        'webview cannot answer a permission prompt, so reading files ' +
+                        'and running commands failed. The answer above was written ' +
+                        'without them.',
+                });
+            }
             // Scan the finished answer, not the deltas: a path can straddle two
             // chunks, and half a filename resolves to nothing.
             this.scanMedia(answer);
@@ -912,6 +955,7 @@ export class AgyChatViewProvider implements vscode.WebviewViewProvider {
         if (!text) return;
         this.kill(); // one turn at a time; a new send cancels an in-flight one
         this.runStartedAt = Date.now();
+        this.toolDenied = false;
 
         const cli = this.resolveAgy();
         if (!cli) {
@@ -955,6 +999,8 @@ export class AgyChatViewProvider implements vscode.WebviewViewProvider {
         if (this.mode) args.push('--mode', this.mode);
         if (this.effort) args.push('--effort', this.effort);
         if (this.sandbox) args.push('--sandbox');
+        // Without this every file tool is auto-denied; see the `tools` getter.
+        if (this.tools) args.push('--dangerously-skip-permissions');
         // Multi-root workspaces: cwd covers only the first folder, so agy was
         // blind to every other one the user has open. --add-dir puts them in
         // scope (verified rc=0), which matters here because a question about a
