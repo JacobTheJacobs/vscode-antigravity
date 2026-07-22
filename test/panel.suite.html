@@ -1,0 +1,269 @@
+<!doctype html>
+<meta charset="utf-8">
+<link rel="stylesheet" href="ag.css">
+<style>
+  :root{--vscode-foreground:#cccccc;--vscode-descriptionForeground:#9d9d9d;
+    --vscode-editor-background:#1f1f1f;--vscode-sideBar-background:#181818;
+    --vscode-editorWidget-background:#202020;--vscode-editorWidget-border:#454545;
+    --vscode-input-background:#313131;--vscode-editor-font-family:Consolas,monospace;
+    --vscode-textLink-foreground:#4daafc;color-scheme:dark;}
+  html,body{margin:0;background:#181818;font:13px "Segoe UI",sans-serif;color:#ccc;}
+  #root{width:440px;height:620px;display:flex;flex-direction:column;}
+</style>
+<div id="root">
+<div class="statusbar"><span class="grow"></span>
+  <button id="historyBtn" class="chipbtn icon" type="button"></button>
+  <button id="newBtn" class="chipbtn icon" type="button"></button>
+</div>
+<div id="pickerTop" class="picker picker-top" hidden></div>
+<div id="log" class="log"></div>
+<div id="picker" class="picker" hidden></div>
+<form id="composer" class="composer"><div class="inputwrap">
+  <div id="queue" class="queue" hidden></div>
+  <div id="tray" class="tray" hidden></div>
+  <textarea id="input" rows="1" placeholder="Ask Antigravity…"></textarea>
+  <button id="micBtn" class="micbtn" type="button" hidden></button>
+  <div class="tools">
+    <button id="plusBtn" class="toolbtn" type="button">+</button>
+    <button id="slashBtn" class="toolbtn" type="button">/</button>
+    <span class="grow"></span>
+    <span id="usage" class="usage" hidden></span>
+    <span id="modelBtn" class="modelchip">agy</span>
+    <span id="effortBtn" class="modelchip effortchip"><span id="effortText">Default</span></span>
+    <span id="modeBtn" class="modelchip modechip"><span id="modeText">Auto</span></span>
+    <button id="send" class="sendbtn" type="submit">&uarr;</button>
+  </div>
+</div></form>
+</div>
+<script>
+  window.__sent = [];
+  window.acquireVsCodeApi = function(){return {postMessage:function(m){window.__sent.push(m);},
+    getState:function(){return null;},setState:function(){}};};
+  window.__reply = function(m){window.dispatchEvent(new MessageEvent('message',{data:m}));};
+</script>
+<script src="markdown.js"></script>
+<script src="panel.js"></script>
+<script>
+  const log = [];
+  let pass = 0, fail = 0;
+  function check(label, fn, want) {
+    let got;
+    try { got = String(fn()); } catch (e) { got = 'THREW ' + e.message; }
+    const ok = want === undefined ? !/^(THREW|MISSING|NONE|0 )/.test(got) : got === want;
+    ok ? pass++ : fail++;
+    log.push((ok ? 'PASS  ' : 'FAIL  ') + label + ': ' + got + (ok || want === undefined ? '' : '   [want ' + want + ']'));
+  }
+  const P  = () => document.getElementById('picker');
+  const PT = () => document.getElementById('pickerTop');
+  const rows = (p) => Array.prototype.slice.call((p||P()).querySelectorAll('.pick'));
+  const names = (p) => rows(p).map(r => (r.querySelector('.name')||{}).textContent);
+  const metas = (p) => rows(p).map(r => (r.querySelector('.meta')||{}).textContent);
+  const reset = () => { __reply({type:'resumed', id:''}); window.__sent.length = 0; };
+
+  /* ---------------- TOOLS ---------------- */
+  log.push('— tool rows —');
+
+  check('a tool row appears when the CLI reports one', () => {
+    reset();
+    __reply({type:'tool', index:0, name:'list_dir', state:'ACTIVE'});
+    const r = document.querySelector('.turn.tool');
+    return r ? r.querySelector('.toolname').textContent + ' / ' + r.querySelector('.toolmeta').textContent : 'MISSING';
+  }, 'list_dir / running…');
+
+  check('the same step_index upgrades in place, never duplicates', () => {
+    __reply({type:'tool', index:0, name:'list_dir', state:'DONE', seconds:1.25});
+    return document.querySelectorAll('.turn.tool').length + ' row(s), ' +
+      document.querySelector('.turn.tool .toolmeta').textContent;
+  }, '1 row(s), 1.25s');
+
+  check('a second tool gets its own row', () => {
+    __reply({type:'tool', index:1, name:'view_file', state:'DONE', seconds:0.4});
+    return document.querySelectorAll('.turn.tool').length + ' rows';
+  }, '2 rows');
+
+  check('an ERROR row is marked as failed, not as done', () => {
+    __reply({type:'tool', index:2, name:'run_command', state:'ERROR'});
+    const r = document.querySelectorAll('.turn.tool')[2];
+    return r.dataset.state + ' / ' + r.querySelector('.toolmeta').textContent;
+  }, 'error / failed');
+
+  check('denial notice carries a working enable button', () => {
+    __reply({type:'toolsDenied', text:'A tool was denied.'});
+    const errs = document.querySelectorAll('.turn.error');
+    const btn = errs[errs.length-1].querySelector('.chipbtn');
+    if (!btn) return 'MISSING';
+    window.__sent.length = 0; btn.click();
+    return JSON.stringify(window.__sent);
+  }, '[{"type":"setTools","on":true}]');
+
+  /* ---------------- SKILLS ---------------- */
+  log.push('— skills —');
+
+  check('skills list renders one row per skill', () => {
+    reset();
+    __reply({type:'skills', skills:[
+      {name:'agent-reach', description:'17 platforms via CLI and MCP'},
+      {name:'hatch-clawmate', description:'animated pet spritesheets'},
+      {name:'hatch-pet', description:'pet behaviour'}]});
+    return names().join(', ');
+  }, 'agent-reach, hatch-clawmate, hatch-pet');
+
+  check('a skill shows its description, not a placeholder', () => metas()[0],
+    '17 platforms via CLI and MCP');
+
+  check('no skills says so rather than showing an empty box', () => {
+    reset();
+    __reply({type:'skills', skills:[]});
+    return P().textContent.toLowerCase().indexOf('nothing') >= 0 ? 'says nothing to show' : P().textContent.slice(0,40);
+  }, 'says nothing to show');
+
+  /* ---------------- MCP ---------------- */
+  log.push('— mcp —');
+
+  check('mcp servers render one row each', () => {
+    reset();
+    __reply({type:'mcp', servers:[
+      {name:'unity-mcp-coplay', detail:'stdio'},
+      {name:'unity-mcp-ivan', detail:'stdio'},
+      {name:'pencil', detail:'http'}]});
+    return names().join(', ');
+  }, 'unity-mcp-coplay, unity-mcp-ivan, pencil');
+
+  check('each server shows its transport', () => metas().join(','), 'stdio,stdio,http');
+
+  check('no servers configured says so', () => {
+    reset();
+    __reply({type:'mcp', servers:[]});
+    return P().textContent.toLowerCase().indexOf('nothing') >= 0 ? 'says nothing to show' : P().textContent.slice(0,40);
+  }, 'says nothing to show');
+
+  /* ---------------- CONTEXT: @ mentions ---------------- */
+  log.push('— context: @ —');
+
+  const input = document.getElementById('input');
+  // The panel sends the bare term; the host strips a leading @ anyway, so
+  // either form works and this pins the one actually sent.
+  check('typing @ asks the host for matching files', () => {
+    reset();
+    input.value = '@pan';
+    input.dispatchEvent(new Event('input', {bubbles:true}));
+    return JSON.stringify(window.__sent.filter(m => m.type === 'findFiles'));
+  }, '[{"type":"findFiles","query":"pan"}]');
+
+  check('picking a file replaces the partial token', () => {
+    __reply({type:'files', files:[{rel:'media/agy/panel.js', name:'panel.js'}]});
+    rows()[0].click();
+    return JSON.stringify(input.value);
+  }, '"@media/agy/panel.js "');
+
+  check('a second mention appends, it does not overwrite the first', () => {
+    input.value = '@media/agy/panel.js @pkg';
+    input.dispatchEvent(new Event('input', {bubbles:true}));
+    __reply({type:'files', files:[{rel:'package.json', name:'package.json'}]});
+    rows()[0].click();
+    return JSON.stringify(input.value);
+  }, '"@media/agy/panel.js @package.json "');
+
+  /* ---------------- CONTEXT: + browser ---------------- */
+  log.push('— context: + browser —');
+
+  check('+ offers upload and browse, nothing else', () => {
+    reset(); input.value = '';
+    document.getElementById('plusBtn').click();
+    return names().join(' | ');
+  }, 'Upload a file… | Browse workspace');
+
+  check('Browse asks the host for the workspace root', () => {
+    window.__sent.length = 0;
+    rows().filter(r => (r.querySelector('.name')||{}).textContent === 'Browse workspace')[0].click();
+    return JSON.stringify(window.__sent);
+  }, '[{"type":"browse","path":""}]');
+
+  check('multi-root: the top level lists every folder', () => {
+    __reply({type:'tree', dir:'', entries:[
+      {name:'jobs', dir:true, rel:'jobs'},
+      {name:'suno', dir:true, rel:'suno'},
+      {name:'hermes', dir:true, rel:'hermes'},
+      {name:'ai-hedge-fund-v5', dir:true, rel:'ai-hedge-fund-v5'}]});
+    return names().join(', ');
+  }, 'jobs, suno, hermes, ai-hedge-fund-v5');
+
+  check('descending a folder asks for that folder by name', () => {
+    window.__sent.length = 0;
+    rows().filter(r => (r.querySelector('.name')||{}).textContent === 'suno')[0].click();
+    return JSON.stringify(window.__sent);
+  }, '[{"type":"browse","path":"suno"}]');
+
+  check('a nested listing offers ".." back up', () => {
+    __reply({type:'tree', dir:'suno/videos', entries:[
+      {name:'clips', dir:true, rel:'suno/videos/clips'},
+      {name:'creator.py', dir:false, rel:'suno/videos/creator.py'}]});
+    return names()[0];
+  }, '..');
+
+  check('".." goes to the parent, not to the root', () => {
+    window.__sent.length = 0;
+    rows()[0].click();
+    return JSON.stringify(window.__sent);
+  }, '[{"type":"browse","path":"suno"}]');
+
+  check('picking a file from the tree inserts it as @path', () => {
+    input.value = '';
+    __reply({type:'tree', dir:'suno/videos', entries:[
+      {name:'creator.py', dir:false, rel:'suno/videos/creator.py'}]});
+    rows().filter(r => (r.querySelector('.name')||{}).textContent === 'creator.py')[0].click();
+    return JSON.stringify(input.value);
+  }, '"@suno/videos/creator.py "');
+
+  /* ---------------- CONTEXT: attachments ---------------- */
+  log.push('— context: attachments —');
+
+  check('a pasted image becomes a tray chip', () => {
+    reset(); input.value = '';
+    __reply({type:'pasted', path:'shot.png', name:'shot.png', src:'data:image/png;base64,iVBORw0KGgo='});
+    const tray = document.getElementById('tray');
+    return (tray.hidden ? 'HIDDEN' : 'shown') + ', chips=' + tray.querySelectorAll('.chipimg').length +
+      ', img=' + tray.querySelectorAll('img').length;
+  }, 'shown, chips=1, img=1');
+
+  check('sending carries the attachment as @path', () => {
+    input.value = 'what is this';
+    window.__sent.length = 0;
+    document.getElementById('composer').dispatchEvent(new Event('submit', {bubbles:true, cancelable:true}));
+    return JSON.stringify(window.__sent.filter(m => m.type === 'send'));
+  }, '[{"type":"send","text":"what is this @shot.png"}]');
+
+  check('the tray empties once the turn is sent', () => {
+    const tray = document.getElementById('tray');
+    return tray.hidden ? 'empty' : 'STILL ' + tray.querySelectorAll('.chipimg').length;
+  }, 'empty');
+
+  check('dropping a chip removes only that one', () => {
+    reset(); input.value = '';
+    __reply({type:'pasted', path:'a.png', name:'a.png', src:'data:image/png;base64,x'});
+    __reply({type:'pasted', path:'b.png', name:'b.png', src:'data:image/png;base64,y'});
+    document.querySelectorAll('#tray .chipx')[0].click();
+    return document.querySelectorAll('#tray .chipimg').length + ' left: ' +
+      (document.querySelector('#tray .chipname')||{}).textContent;
+  }, '1 left: b.png');
+
+  /* ---------------- CONTEXT: workspace folders ---------------- */
+  log.push('— context: scope —');
+
+  check('/add-dir lists every folder agy has in scope', () => {
+    reset();
+    __reply({type:'folders', folders:['C:/x/jobs','C:/x/suno','C:/x/hermes']});
+    // Basenames, not full paths: the row names the folder, the meta says how
+    // agy got it.
+    return names().length + ' rows: ' + names().join(', ');
+  }, '3 rows: jobs, suno, hermes');
+
+  check('the first is the cwd, the rest arrive via --add-dir', () => metas().join(' | '),
+    'cwd | --add-dir | --add-dir');
+
+  const out = document.createElement('pre');
+  out.id = 'result';
+  out.style.cssText = 'position:fixed;left:450px;top:0;color:#0f0;font:11px monospace;margin:0;white-space:pre-wrap;width:640px';
+  out.textContent = log.join('\n') + '\n\n' + pass + ' passed, ' + fail + ' failed';
+  document.body.appendChild(out);
+</script>

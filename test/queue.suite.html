@@ -1,0 +1,197 @@
+<!doctype html>
+<meta charset="utf-8">
+<link rel="stylesheet" href="ag.css">
+<style>
+  :root{--vscode-foreground:#cccccc;--vscode-descriptionForeground:#9d9d9d;
+    --vscode-editor-background:#1f1f1f;--vscode-sideBar-background:#181818;
+    --vscode-editorWidget-background:#202020;--vscode-editorWidget-border:#454545;
+    --vscode-input-background:#313131;color-scheme:dark;}
+  html,body{margin:0;background:#181818;font:13px "Segoe UI",sans-serif;color:#ccc;}
+  #root{width:440px;height:520px;display:flex;flex-direction:column;}
+</style>
+<div id="root">
+<div class="statusbar"><span class="grow"></span>
+  <button id="historyBtn" class="chipbtn icon" type="button"></button>
+  <button id="newBtn" class="chipbtn icon" type="button"></button>
+</div>
+<div id="pickerTop" class="picker picker-top" hidden></div>
+<div id="log" class="log"></div>
+<div id="picker" class="picker" hidden></div>
+<form id="composer" class="composer">
+  <div class="inputwrap">
+    <div id="queue" class="queue" hidden></div>
+    <div id="tray" class="tray" hidden></div>
+    <textarea id="input" rows="1" placeholder="Ask Antigravity…"></textarea>
+    <button id="micBtn" class="micbtn" type="button" hidden></button>
+    <div class="tools">
+      <button id="plusBtn" class="toolbtn" type="button">+</button>
+      <button id="slashBtn" class="toolbtn" type="button">/</button>
+      <span class="grow"></span>
+      <span id="usage" class="usage" hidden></span>
+      <span id="modelBtn" class="modelchip">3.1-pro-high</span>
+      <span id="effortBtn" class="modelchip effortchip"><span id="effortText">Default</span></span>
+      <span id="modeBtn" class="modelchip modechip"><span id="modeText">Auto</span></span>
+      <button id="send" class="sendbtn" type="submit">
+        <svg viewBox="0 0 16 16" class="ico"><path d="M8 12.6V3.8M4.4 7.4 8 3.6l3.6 3.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    </div>
+  </div>
+</form>
+</div>
+<script>
+  window.__sent = [];
+  window.acquireVsCodeApi = function () {
+    return { postMessage: function (m) { window.__sent.push(m); },
+             getState:function(){return null;}, setState:function(){} };
+  };
+  window.__reply = function (m) {
+    window.dispatchEvent(new MessageEvent('message', { data: m }));
+  };
+</script>
+<script src="markdown.js"></script>
+<script src="panel.js"></script>
+<script>
+  const log = [];
+  function step(l, fn) {
+    try { log.push(l + ': ' + fn()); } catch (e) { log.push(l + ': THREW ' + e.message); }
+  }
+  const input = document.getElementById('input');
+  const form = document.getElementById('composer');
+  const send = document.getElementById('send');
+  const Q = () => document.getElementById('queue');
+  const sends = () => window.__sent.filter(function (m) { return m.type === 'send'; })
+                        .map(function (m) { return m.text; });
+  function type(t) {
+    input.value = t;
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  }
+
+  step('1. first message sends immediately', function () {
+    window.__sent.length = 0;
+    type('first question');
+    return 'sent=' + JSON.stringify(sends()) + ', busy=' + send.classList.contains('stop');
+  });
+
+  step('2. typing during the turn QUEUES, does not cancel', function () {
+    window.__sent.length = 0;
+    type('follow-up A');
+    type('follow-up B');
+    return 'sent=' + JSON.stringify(sends()) +
+      ', stops=' + window.__sent.filter(function (m) { return m.type === 'stop'; }).length +
+      ', queued rows=' + Q().querySelectorAll('.queueitem').length +
+      ', visible=' + !Q().hidden;
+  });
+
+  // Steps 3 and 4 are async: the drain is deferred so it lands after the done
+  // handler has cleared busy. Reading synchronously measured nothing.
+  window.__async = async function () {
+    const tick = () => new Promise(function (r) { setTimeout(r, 0); });
+    window.__sent.length = 0;
+    __reply({ type: 'done' });
+    await tick();
+    log.splice(2, 0, '3. turn ends cleanly -> first queued goes out: sent=' +
+      JSON.stringify(sends()) + ', remaining=' + Q().querySelectorAll('.queueitem').length);
+    window.__sent.length = 0;
+    __reply({ type: 'done' });
+    await tick();
+    log.splice(3, 0, '4. next turn ends -> the last goes out: sent=' +
+      JSON.stringify(sends()) + ', remaining=' + Q().querySelectorAll('.queueitem').length +
+      ', hidden=' + Q().hidden);
+    return 'ok';
+  };
+
+  window.__rest = function () {
+  step('5. clicking the button mid-turn stops', function () {
+    __reply({ type: 'done' });
+    type('a new turn');
+    window.__sent.length = 0;
+    send.click();
+    return 'posted ' + JSON.stringify(window.__sent.map(function (m) { return m.type; }));
+  });
+
+  step('6. a stop hands queued words back instead of firing them', function () {
+    __reply({ type: 'done' });
+    type('turn that will be stopped');
+    type('queued while running');
+    window.__sent.length = 0;
+    __reply({ type: 'done', stopped: true });
+    return 'sent=' + JSON.stringify(sends()) +
+      ', queue rows=' + Q().querySelectorAll('.queueitem').length +
+      ', composer=' + JSON.stringify(input.value);
+  });
+
+  step('7. an error hands them back too, never retries into it', function () {
+    input.value = '';
+    type('turn that will fail');
+    type('queued behind a failure');
+    window.__sent.length = 0;
+    __reply({ type: 'error', text: 'agy exited with code 1.' });
+    return 'sent=' + JSON.stringify(sends()) +
+      ', queue rows=' + Q().querySelectorAll('.queueitem').length +
+      ', composer=' + JSON.stringify(input.value);
+  });
+
+  step('8. New conversation clears the queue', function () {
+    input.value = '';
+    type('running');
+    type('queued');
+    __reply({ type: 'resumed', id: '' });
+    return 'queue rows=' + Q().querySelectorAll('.queueitem').length + ', hidden=' + Q().hidden;
+  });
+
+  step('A. Esc stops a running turn', function () {
+    __reply({ type: 'done' });
+    input.value = '';
+    type('a turn to escape from');
+    window.__sent.length = 0;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    return 'posted ' + JSON.stringify(window.__sent.map(function (m) { return m.type; }));
+  });
+
+  step('B. Esc closes a menu first, does NOT stop the turn', function () {
+    __reply({ type: 'done' });
+    input.value = '';
+    type('running with a menu open');
+    __reply({ type: 'slash', query: '/', commands: [{ name: '/clear', description: 'Clear' }] });
+    window.__sent.length = 0;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    const stopped = window.__sent.filter(function (m) { return m.type === 'stop'; }).length;
+    return 'menu hidden=' + document.getElementById('picker').hidden + ', stops=' + stopped;
+  });
+
+  step('C. placeholder says what Enter will do', function () {
+    __reply({ type: 'done' });
+    const idle = input.placeholder;
+    input.value = '';
+    type('now running');
+    const busyText = input.placeholder;
+    __reply({ type: 'done' });
+    return 'idle=' + JSON.stringify(idle) + ' busy=' + JSON.stringify(busyText) +
+      ' restored=' + (input.placeholder === idle);
+  });
+
+  step('9. stop glyph is centred in the circle', function () {
+    input.value = '';
+    type('running again');
+    const b = send.getBoundingClientRect();
+    const cs = getComputedStyle(send, '::after');
+    const svg = send.querySelector('.ico');
+    return 'button ' + Math.round(b.width) + 'x' + Math.round(b.height) +
+      ', arrow display=' + getComputedStyle(svg).display +
+      ', square ' + cs.width + 'x' + cs.height;
+  });
+
+  };
+  window.__run = async function () {
+    await window.__async();
+    window.__rest();
+    publish();
+    return 'done';
+  };
+  function publish() {
+  const out = document.createElement('pre');
+  out.id = 'result';
+  out.style.cssText = 'position:fixed;left:450px;top:0;color:#0f0;font:11px monospace;margin:0;white-space:pre-wrap;width:640px';
+  out.textContent = log.join('\n');
+  document.body.appendChild(out);
+  }
+</script>

@@ -36,3 +36,6 @@ images/**
 # OS/logs
 .DS_Store
 *.log
+
+# Test suites are driven by a headless browser against media/, not shipped.
+test/**

@@ -1,0 +1,195 @@
+<!doctype html>
+<meta charset="utf-8">
+<link rel="stylesheet" href="ag.css">
+<style>
+  :root{--vscode-foreground:#ccc;--vscode-descriptionForeground:#9d9d9d;
+    --vscode-editor-background:#1f1f1f;--vscode-sideBar-background:#181818;
+    --vscode-input-background:#313131;--vscode-panel-border:#2b2b2b;
+    --vscode-editor-font-family:Consolas,monospace;--vscode-textLink-foreground:#4daafc;
+    color-scheme:dark;}
+  html,body{margin:0;background:#181818;font:13px "Segoe UI",sans-serif;color:#ccc;}
+  #root{width:440px;height:520px;display:flex;flex-direction:column;}
+</style>
+<div id="root">
+<div class="statusbar"><span class="grow"></span>
+  <button id="historyBtn" class="chipbtn icon" type="button"></button>
+  <button id="newBtn" class="chipbtn icon" type="button"></button>
+</div>
+<div id="pickerTop" class="picker picker-top" hidden></div>
+<div id="log" class="log"></div>
+<div id="picker" class="picker" hidden></div>
+<form id="composer" class="composer">
+  <div class="inputwrap">
+    <div id="tray" class="tray" hidden></div>
+    <textarea id="input" rows="1" placeholder="Ask Antigravity…"></textarea>
+    <button id="micBtn" class="micbtn" type="button" hidden></button>
+    <div class="tools">
+      <button id="plusBtn" class="toolbtn" type="button">+</button>
+      <button id="slashBtn" class="toolbtn" type="button">/</button>
+      <span class="grow"></span>
+      <span id="usage" class="usage" hidden></span>
+      <span id="modelBtn" class="modelchip">gemini-3.6-flash</span>
+      <span id="effortBtn" class="modelchip effortchip">
+        <svg viewBox="0 0 16 16" class="gauge"><rect class="b1" x="2.2" y="9.4" width="2.6" height="4.4" rx="1"/><rect class="b2" x="6.7" y="6.6" width="2.6" height="7.2" rx="1"/><rect class="b3" x="11.2" y="3.4" width="2.6" height="10.4" rx="1"/></svg><span id="effortText">Default</span></span>
+      <span id="modeBtn" class="modelchip modechip"><span id="modeText">Auto</span></span>
+      <button id="send" class="sendbtn" type="submit">&uarr;</button>
+    </div>
+  </div>
+</form>
+</div>
+<script>
+  window.__sent = [];
+  window.acquireVsCodeApi = function () {
+    return { postMessage: function (m) { window.__sent.push(m); },
+             getState: function(){return null;}, setState: function(){} };
+  };
+  window.__reply = function (m) {
+    window.dispatchEvent(new MessageEvent('message', { data: m }));
+  };
+</script>
+<script src="markdown.js"></script>
+<script src="panel.js"></script>
+<script>
+  const log = [];
+  function step(l, fn) {
+    try { log.push(l + ': ' + fn()); } catch (e) { log.push(l + ': THREW ' + e.message); }
+  }
+  const P = () => document.getElementById('picker');
+  const rowFor = (label) => Array.prototype.slice.call(P().querySelectorAll('.pick'))
+      .filter((r) => (r.querySelector('.name') || {}).textContent === label)[0];
+
+  step('1. state: effort=medium, sandbox off', function () {
+    __reply({ type: 'modes', mode: '', effort: 'medium', sandbox: false, folders: 0 });
+    return 'chip="' + document.getElementById('effortText').textContent + '"';
+  });
+
+  step('2. "/" catalog carries controls on its rows', function () {
+    __reply({ type: 'slash', query: '/', commands: [
+      { name: '/effort',  description: 'Reasoning effort — slider' },
+      { name: '/sandbox', description: 'Sandboxed terminal access — switch' },
+      { name: '/clear',   description: 'Clear the conversation' },
+    ] });
+    const e = rowFor('/effort'), s = rowFor('/sandbox'), c = rowFor('/clear');
+    return '/effort slider=' + (e && e.querySelector('[data-slider]') ? 'INLINE' : 'MISSING') +
+      ', /sandbox switch=' + (s && s.querySelector('[data-toggle]') ? 'INLINE' : 'MISSING') +
+      ', /clear control=' + (c && c.querySelector('.rowcontrol') ? 'UNEXPECTED' : 'none');
+  });
+
+  step('3. no nested buttons (invalid HTML the parser would unnest)', function () {
+    return P().querySelectorAll('button button').length + ' nested';
+  });
+
+  const SL = () => rowFor('/effort').querySelector('[data-slider="effort"]');
+  function dragTo(frac) {
+    const el = SL(), r = el.getBoundingClientRect();
+    const x = r.left + r.width * frac;
+    el.dispatchEvent(new PointerEvent('pointerdown', { clientX: x, bubbles: true }));
+    document.dispatchEvent(new PointerEvent('pointermove', { clientX: x, bubbles: true }));
+    document.dispatchEvent(new PointerEvent('pointerup', { clientX: x, bubbles: true }));
+  }
+
+  step('4. it is a track with a knob, not four buttons', function () {
+    const el = SL();
+    return 'track=' + !!el.querySelector('.slider-track') +
+      ', dots=' + el.querySelectorAll('.slider-dot').length +
+      ', knobs=' + el.querySelectorAll('.slider-knob').length +
+      ', role=' + el.getAttribute('role') +
+      ', width=' + Math.round(el.getBoundingClientRect().width);
+  });
+
+  step('5. drag to the far right lands on High, once', function () {
+    window.__sent.length = 0;
+    dragTo(1);
+    return 'posted ' + JSON.stringify(window.__sent) +
+      ', knob=' + SL().style.getPropertyValue('--pos') +
+      ', aria=' + SL().getAttribute('aria-valuetext');
+  });
+
+  step('5b. dragging across stops commits ONCE, on release', function () {
+    const el = SL(), r = el.getBoundingClientRect();
+    window.__sent.length = 0;
+    el.dispatchEvent(new PointerEvent('pointerdown', { clientX: r.left, bubbles: true }));
+    [0.3, 0.55, 0.8].forEach(function (f) {
+      document.dispatchEvent(new PointerEvent('pointermove',
+        { clientX: r.left + r.width * f, bubbles: true }));
+    });
+    document.dispatchEvent(new PointerEvent('pointerup',
+      { clientX: r.left + r.width * 0.8, bubbles: true }));
+    return window.__sent.length + ' message(s): ' + JSON.stringify(window.__sent);
+  });
+
+  step('5c. arrow keys move it', function () {
+    const el = SL();
+    window.__sent.length = 0;
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+    return 'posted ' + JSON.stringify(window.__sent) +
+      ', aria=' + el.getAttribute('aria-valuetext');
+  });
+
+  step('5d. Home/End snap to the ends', function () {
+    const el = SL();
+    window.__sent.length = 0;
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+    const lo = el.getAttribute('aria-valuetext');
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+    return 'Home=' + lo + ', End=' + el.getAttribute('aria-valuetext') +
+      ', posts=' + window.__sent.length;
+  });
+
+  step('6. toggle sandbox on its row', function () {
+    window.__sent.length = 0;
+    rowFor('/sandbox').querySelector('[data-toggle]').click();
+    const sw = rowFor('/sandbox').querySelector('[data-toggle]');
+    return 'posted ' + JSON.stringify(window.__sent) +
+      ', switch on=' + sw.classList.contains('on') +
+      ', menu open=' + !P().hidden;
+  });
+
+  step('7. the row itself does not navigate away', function () {
+    rowFor('/effort').querySelector('.name').click();
+    return 'menu open=' + !P().hidden + ', rows=' + P().querySelectorAll('.pick').length;
+  });
+
+  step('8. chip opens the same row-based surface', function () {
+    document.getElementById('effortBtn').click();
+    __reply({ type: 'modes', mode: '', effort: 'high', sandbox: true, tools: false, folders: 0, open: 'effort' });
+    const names = Array.prototype.slice.call(P().querySelectorAll('.name'))
+      .map((n) => n.textContent).join(' + ');
+    return 'rows=' + names + ', controls=' + P().querySelectorAll('.rowcontrol').length;
+  });
+
+  const namedRow = (label) => Array.prototype.slice.call(P().querySelectorAll('.pick'))
+    .filter((r) => (r.querySelector('.name') || {}).textContent === label)[0];
+
+  step('T1. the two switches are told apart', function () {
+    const r = namedRow('Tool access');
+    if (!r) return 'NO Tool access ROW';
+    window.__sent.length = 0;
+    r.querySelector('[data-toggle]').click();
+    return 'posted ' + JSON.stringify(window.__sent) +
+      ', switch on=' + namedRow('Tool access').querySelector('[data-toggle]').classList.contains('on');
+  });
+
+  step('T2. sandbox still posts setSandbox', function () {
+    window.__sent.length = 0;
+    namedRow('Sandbox').querySelector('[data-toggle]').click();
+    return 'posted ' + JSON.stringify(window.__sent);
+  });
+
+  step('T3. a denial shows a notice with a one-click fix', function () {
+    __reply({ type: 'toolsDenied', text: 'A tool was denied.' });
+    const errs = document.querySelectorAll('.turn.error');
+    const err = errs[errs.length - 1];
+    const btn = err && err.querySelector('.chipbtn');
+    if (!btn) return 'NO BUTTON';
+    window.__sent.length = 0;
+    btn.click();
+    return 'button="' + btn.textContent + '", posted ' + JSON.stringify(window.__sent);
+  });
+
+  const out = document.createElement('pre');
+  out.id = 'result';
+  out.style.cssText = 'position:fixed;left:450px;top:0;color:#0f0;font:11px monospace;margin:0;white-space:pre-wrap;width:560px';
+  out.textContent = log.join('\n');
+  document.body.appendChild(out);
+</script>
