@@ -261,6 +261,51 @@
   check('the first is the cwd, the rest arrive via --add-dir', () => metas().join(' | '),
     'cwd | --add-dir | --add-dir');
 
+  /* ---------------- DISMISSAL ---------------- */
+  log.push('— dismissing menus —');
+
+  const openSlash = () => {
+    reset(); input.value = '';
+    document.getElementById('slashBtn').click();
+    __reply({type:'slash', query:'/', commands:[
+      {name:'/clear', description:'Clear the conversation'},
+      {name:'/help',  description:'Show commands'}]});
+  };
+
+  check('a click on the transcript closes the menu', () => {
+    openSlash();
+    const was = !P().hidden;
+    document.getElementById('log').click();
+    return 'open before=' + was + ', after=' + !P().hidden;
+  }, 'open before=true, after=false');
+
+  check('a click inside the menu does NOT close it', () => {
+    openSlash();
+    P().querySelector('.picker-head').click();
+    return 'still open=' + !P().hidden;
+  }, 'still open=true');
+
+  check('choosing a row still runs the row, then closes', () => {
+    openSlash();
+    window.__sent.length = 0;
+    rows().filter(r => (r.querySelector('.name')||{}).textContent === '/help')[0].click();
+    return 'posted=' + JSON.stringify(window.__sent.map(m => m.type)) + ', open=' + !P().hidden;
+  }, 'posted=["listSlash"], open=false');
+
+  check('the composer keeps working with a menu open', () => {
+    openSlash();
+    input.click();
+    return 'open=' + !P().hidden;
+  }, 'open=false');
+
+  check('History (top menu) also closes on an outside click', () => {
+    reset();
+    __reply({type:'sessions', sessions:[{id:'a', mtime:Date.now(), title:'hello'}], current:''});
+    const was = !PT().hidden;
+    document.getElementById('log').click();
+    return 'open before=' + was + ', after=' + !PT().hidden;
+  }, 'open before=true, after=false');
+
   const out = document.createElement('pre');
   out.id = 'result';
   out.style.cssText = 'position:fixed;left:450px;top:0;color:#0f0;font:11px monospace;margin:0;white-space:pre-wrap;width:640px';

@@ -771,6 +771,26 @@
   const modelBtn = document.getElementById("modelBtn");
   const historyBtn = document.getElementById("historyBtn");
   const newBtn = document.getElementById("newBtn");
+
+  /* Click anywhere else and the menu goes away, which is what every menu in
+     VS Code does. Escape worked and clicking the chip again worked, but a
+     click on the transcript left it hanging over the answer.
+
+     Bound in the CAPTURE phase so it runs before the pickers' own handlers.
+     In the bubble phase a row click would close the menu and then be
+     re-examined against a picker that had already been emptied. */
+  document.addEventListener("click", (e) => {
+    const closed = (picker || {}).hidden !== false && (pickerTop || {}).hidden !== false;
+    if (closed) return;
+    // Inside a menu: it handles its own clicks.
+    if (e.target.closest(".picker")) return;
+    // On the control that opened it: that button toggles, and closing here
+    // first would make it reopen immediately.
+    if (e.target.closest(
+      "#plusBtn, #slashBtn, #modelBtn, #modeBtn, #effortBtn, #historyBtn, #newBtn"
+    )) { return; }
+    closePicker();
+  }, true);
   let models = [];
   let currentModel = "";
   const modeBtn = document.getElementById("modeBtn");

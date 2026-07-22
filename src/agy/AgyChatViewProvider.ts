@@ -182,7 +182,24 @@ export class AgyChatViewProvider implements vscode.WebviewViewProvider {
         } catch {
             return '';
         }
-        const m = /<USER_REQUEST>\s*([\s\S]*?)\s*<\/USER_REQUEST>/.exec(head);
+        // Parse the record, do NOT regex the raw file. content is a JSON string,
+        // so its newlines and tabs are the two-character escapes \n and \t —
+        // regexing the bytes put those in the title literally, and a prompt
+        // pasted from a table came out as "\nrepo\tbranch\tfiles\tstack\n...".
+        let content = '';
+        for (const line of head.split(/\r?\n/)) {
+            const t = line.trim();
+            if (!t.startsWith('{')) { continue; }
+            let rec: { type?: string; content?: unknown };
+            try { rec = JSON.parse(t); } catch { continue; }   // last line may be cut
+            if (rec.type === 'USER_INPUT' && typeof rec.content === 'string') {
+                content = rec.content;
+                break;
+            }
+        }
+        if (!content) { return ''; }
+
+        const m = /<USER_REQUEST>([\s\S]*?)<\/USER_REQUEST>/.exec(content);
         if (!m) { return ''; }
         const one = m[1].replace(/\s+/g, ' ').trim();
         if (!one) { return ''; }
