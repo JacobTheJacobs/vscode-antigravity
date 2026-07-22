@@ -88,11 +88,11 @@ Slash-command catalog adapted from
 | Build | What it is |
 |---|---|
 | [**Grok CLI Copilot**](https://marketplace.visualstudio.com/items?itemName=JacobTheJacobs.grok-cli-copilot) | The Grok CLI inside VS Code — chat, agentic edits, full file context in a focused sidebar. |
-| **Claw Mate** | Desktop AI pet that watches your coding agents (Claude Code, Codex, OpenClaw) and surfaces approvals the moment they're needed. |
+| [**Claw Mate**](https://apps.microsoft.com/detail/9NJH9X9KDG5P) | Desktop AI pet that watches your coding agents (Claude Code, Codex, OpenClaw) and surfaces approvals the moment they're needed. |
 | [**TradingAgents Control Room**](https://github.com/JacobTheJacobs/TradingAgents-Control-Room) | Multi-agent trading floor — AI analysts debate a stock live in pixel art, from analysis through risk to decision. |
 | [**Llama Menu**](https://github.com/JacobTheJacobs/llamacpp-menubar) | macOS menu bar control for local llama.cpp, sized from real GGUF metadata. |
 | [**Hermes Menu**](https://github.com/JacobTheJacobs/hermes-menubar) | macOS menu bar control for the Hermes gateway, with status read straight from launchd. |
-| **Corporate Brawl** · **Floor Planner** · **PixelBoy** | A Three.js office brawler, a 2D-to-3D room planner, and a retro sprite editor — all in the browser. |
+| [**Corporate Brawl**](https://corporate-brawl.web.app) · [**Floor Planner**](https://floorplan-29233.web.app/) · [**PixelBoy**](https://pixel-boy-studio.web.app/) | A Three.js office brawler, a 2D-to-3D room planner, and a retro sprite editor — all in the browser. |
 | [**Alexa NFT Trending**](https://github.com/JacobTheJacobs/AlexaNftTrending) | Alexa skill that reads out the top trending NFTs by voice (.NET/C#). |
 
 Plus **Browser SDK** and **PhantomPilot**, both under construction. Everything
