@@ -440,8 +440,31 @@ export class AgyChatViewProvider implements vscode.WebviewViewProvider {
         const clean = String(rel || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
         // Never climb out of the workspace, whatever the webview asks for.
         if (clean.split('/').includes('..')) { this.post({ type: 'tree', dir: '', entries: [] }); return; }
-        const root = folders[0].uri;
-        const dir = clean ? vscode.Uri.joinPath(root, clean) : root;
+
+        // Multi-root: the top level lists the folders themselves. Browsing only
+        // folders[0] meant three of four open folders were unreachable from +,
+        // even though --add-dir already puts them all in agy's scope.
+        if (!clean && folders.length > 1) {
+            this.post({
+                type: 'tree',
+                dir: '',
+                entries: folders.map((f) => ({ name: f.name, dir: true, rel: f.name })),
+            });
+            return;
+        }
+
+        // Paths are rooted at a folder NAME once there is more than one, so the
+        // first segment selects which root rather than being a child of one.
+        let root = folders[0].uri;
+        let rest = clean;
+        if (folders.length > 1) {
+            const [head, ...tail] = clean.split('/');
+            const match = folders.find((f) => f.name === head);
+            if (!match) { this.post({ type: 'tree', dir: '', entries: [] }); return; }
+            root = match.uri;
+            rest = tail.join('/');
+        }
+        const dir = rest ? vscode.Uri.joinPath(root, rest) : root;
         let raw: [string, vscode.FileType][] = [];
         try { raw = await vscode.workspace.fs.readDirectory(dir); } catch { /* unreadable */ }
         const SKIP = new Set(['node_modules', '.git', 'out', 'dist', 'build', '.vscode-test']);

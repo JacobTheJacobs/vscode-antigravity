@@ -1,5 +1,33 @@
 # Changelog
 
+## 3.6.1
+
+- **The `+` browser reaches every workspace folder.** In a multi-root
+  workspace it listed only the first, so the other folders were unreachable
+  from the panel even though agy already had them in scope via `--add-dir`.
+
+## 3.6.0
+
+- **Tool access switch.** agy starts print mode in `request-review`, and a
+  webview cannot answer a permission prompt — so `list_dir`, `view_file` and
+  `run_command` were all being denied. The switch (Execution menu, off by
+  default) passes `--dangerously-skip-permissions`.
+- **A denied tool now says so.** agy does not fail the turn over one; the model
+  works around the missing tool and answers anyway, which produced confident
+  replies written without reading anything. Such a turn now ends with what
+  happened and a button to enable access.
+
+## 3.5.0
+
+- README rewritten around what you get rather than how it works.
+- Setting renamed `gemini-cli-vscode.antigravity.command` → **`antigravity.command`**.
+
+## 3.4.1
+
+- **`/mcp` and `/skills` are reachable.** The catalog showed its first twelve
+  entries in authored order, so commands that only work in agy's TUI were
+  taking the slots from ones that work here. Both rows also carry their count.
+
 ## 3.3.4
 
 - Attribution across the listing: `author`, README byline, issues link.
