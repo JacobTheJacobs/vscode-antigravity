@@ -82,3 +82,18 @@ this extension makes no network calls of its own.
 
 Slash-command catalog adapted from
 [lyadhgod/antigravity-vscode](https://github.com/lyadhgod/antigravity-vscode) (MIT).
+
+## More from JacobTheJacobs
+
+| Build | What it is |
+|---|---|
+| [**Grok CLI Copilot**](https://marketplace.visualstudio.com/items?itemName=JacobTheJacobs.grok-cli-copilot) | The Grok CLI inside VS Code — chat, agentic edits, full file context in a focused sidebar. |
+| **Claw Mate** | Desktop AI pet that watches your coding agents (Claude Code, Codex, OpenClaw) and surfaces approvals the moment they're needed. |
+| [**TradingAgents Control Room**](https://github.com/JacobTheJacobs/TradingAgents-Control-Room) | Multi-agent trading floor — AI analysts debate a stock live in pixel art, from analysis through risk to decision. |
+| [**Llama Menu**](https://github.com/JacobTheJacobs/llamacpp-menubar) | macOS menu bar control for local llama.cpp, sized from real GGUF metadata. |
+| [**Hermes Menu**](https://github.com/JacobTheJacobs/hermes-menubar) | macOS menu bar control for the Hermes gateway, with status read straight from launchd. |
+| **Corporate Brawl** · **Floor Planner** · **PixelBoy** | A Three.js office brawler, a 2D-to-3D room planner, and a retro sprite editor — all in the browser. |
+| [**Alexa NFT Trending**](https://github.com/JacobTheJacobs/AlexaNftTrending) | Alexa skill that reads out the top trending NFTs by voice (.NET/C#). |
+
+Plus **Browser SDK** and **PhantomPilot**, both under construction. Everything
+at [github.com/JacobTheJacobs](https://github.com/JacobTheJacobs).
