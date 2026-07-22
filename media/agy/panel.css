@@ -1,0 +1,1173 @@
+/* Antigravity chat panel — the Grok/Claude sidebar look: monochrome, hairline
+ * borders, small type, streaming bubbles, and pulsing dots while the model
+ * thinks. Every colour is mixed from the editor theme so it sits in any palette. */
+
+:root {
+  --pad: 10px;
+  --radius: 8px;
+
+  /* Turn thread geometry. --ag-rail is the dot's left edge, --ag-turn-indent
+     the content column it hangs to the left of. They move together: raising
+     one alone just slides the dot around inside its own row. */
+  --ag-rail: 12px;
+  --ag-turn-indent: 32px;
+
+  /* Antigravity's OWN tokens, read out of its language_server binary rather
+     than sampled from a sibling product:
+        --color-agy-blue-glow : rgba(0, 102, 255, 0.75)
+        --color-agy-blue-light: rgba(120, 185, 255, 0.75)
+        --color-agy-red       : rgb(210, 0, 0)
+     Used only for the send button, the turn dots and the active row;
+     everything else stays mixed from the editor theme. */
+  --ag-accent: rgb(0, 102, 255);
+  --ag-accent-2: rgb(120, 185, 255);
+  --ag-red: rgb(210, 0, 0);
+  /* Their stacks: ui-sans-serif/system-ui and ui-monospace first. */
+  --ag-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* Their scale, also read from the binary. It is Tailwind's default set —
+     a public, standard scale — with only the blue customised, so matching the
+     proportions is a matter of using the same numbers, not copying anything:
+        --spacing: 0.25rem   --radius-md: 0.375rem   --text-xs: 0.75rem
+        --default-transition-duration: 150ms
+        --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1)                       */
+  --ag-unit: 4px;                 /* 0.25rem */
+  --ag-radius-md: 6px;            /* 0.375rem */
+  --ag-text-xs: 12px;             /* 0.75rem */
+  --ag-dur: 150ms;
+  --ag-ease: cubic-bezier(0.4, 0, 0.2, 1);
+
+  --muted: var(--vscode-descriptionForeground, #a8a8a8);
+  --surface: color-mix(in srgb, var(--vscode-editorWidget-background, var(--vscode-sideBar-background)) 70%, var(--vscode-sideBar-background));
+  --surface-soft: color-mix(in srgb, var(--vscode-editorWidget-background, var(--vscode-sideBar-background)) 42%, transparent);
+  --border: color-mix(in srgb, var(--vscode-editorWidget-border, #3b3b3b) 80%, transparent);
+  --hairline: color-mix(in srgb, var(--border) 70%, transparent);
+
+  /* Interactive controls derive from the FOREGROUND, not from the border
+     tokens. A slider track at --hairline is a 5% contrast line: fine as a
+     divider, invisible as something you are meant to aim at. */
+  --ctl-line: color-mix(in srgb, var(--vscode-foreground) 48%, transparent);
+  --ctl-edge: color-mix(in srgb, var(--vscode-foreground) 55%, transparent);
+  --ctl-fill: color-mix(in srgb, var(--vscode-foreground) 12%, transparent);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  font-family: var(--vscode-font-family);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--vscode-foreground);
+  background: transparent;
+}
+
+/* ---------- status bar: connection state + reconnect ---------- */
+
+.statusbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px var(--pad);
+  border-bottom: 1px solid var(--hairline);
+  font-size: 11px;
+  color: var(--muted);
+  flex: none;
+}
+
+.dot-status {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--muted);
+  opacity: 0.5;
+}
+
+/* Connected is the only state that earns a colour; everything else stays
+   monochrome so the bar never competes with the conversation. */
+.statusbar.ok .dot-status {
+  background: var(--ag-accent);
+  opacity: 1;
+}
+
+.statusbar.bad .dot-status {
+  background: var(--vscode-errorForeground, #f14c4c);
+  opacity: 1;
+}
+
+.statusbar.busy .dot-status {
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.status-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reconnect {
+  flex: none;
+  padding: 2px 8px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--vscode-foreground);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.reconnect:hover { background: var(--surface); }
+
+/* When disconnected the button is the way out, so it stops being subtle. */
+.statusbar.bad .reconnect {
+  color: var(--ag-accent);
+  border-color: color-mix(in srgb, var(--ag-accent) 55%, transparent);
+}
+
+.statusbar.ok .reconnect { color: var(--muted); font-size: 10.5px; padding: 1px 7px; }
+.statusbar.ok .reconnect:hover { color: var(--vscode-foreground); }
+
+/* Connected / Not connected is the point of this bar, so let it be readable
+   rather than the same muted grey as everything else. */
+.statusbar.ok .status-text { color: var(--vscode-foreground); }
+.statusbar.bad .status-text { color: var(--vscode-errorForeground, #f14c4c); }
+
+.chipbtn {
+  flex: none;
+  padding: 2px 7px;
+  font: inherit;
+  font-size: 10.5px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  cursor: pointer;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chipbtn:hover { color: var(--vscode-foreground); border-color: var(--border); }
+
+/* Icon-only variant: a round hit target with the glyph centred. The words were
+   carrying no information a clock and a plus do not, and they crowded the one
+   row that should stay quiet. */
+.chipbtn.icon {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  justify-content: center;
+  border-radius: 50%;
+}
+/* 16px in a 28px target. At 13px the glyph read as a smudge in a circle
+   rather than as a clock and a plus. */
+.chipbtn.icon .ico { width: 16px; height: 16px; margin-right: 0; }
+
+/* Messages waiting for the current turn to finish. Stacked above the input so
+   they read as "next", not as part of the transcript. */
+.queue {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 0 6px;
+}
+
+.queueitem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  font-size: 11.5px;
+  color: var(--muted);
+  background: var(--ctl-fill);
+  border-left: 2px solid var(--ag-accent);
+  border-radius: 4px;
+}
+
+.queueitem .qtext {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queueitem .qx {
+  flex: none;
+  padding: 0 2px;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.queueitem .qx:hover { color: var(--vscode-foreground); }
+
+/* ---------- picker: models, history, slash commands ---------- */
+
+/* Anchored directly above the composer, the way Claude Code opens its action
+   menu — next to the control you clicked, not at the far end of the panel. */
+.picker {
+  flex: none;
+  max-height: 45vh;
+  overflow-y: auto;
+  margin: 0 var(--pad) 6px;
+  padding: 3px 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 6px 18px color-mix(in srgb, #000 35%, transparent);
+}
+
+.picker[hidden] { display: none; }
+
+/* Dropped from the top bar (History), so it hangs under the button rather
+   than floating up from the composer. */
+.picker-top {
+  margin-top: 4px;
+  max-height: 55vh;
+}
+
+/* ---------- empty-state connection ---------- */
+
+.empty-conn {
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.empty-conn.bad { color: var(--vscode-errorForeground, #f14c4c); }
+
+.empty-connect {
+  margin-top: 8px;
+  padding: 3px 14px;
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--ag-accent);
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--ag-accent) 55%, transparent);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.empty-connect:hover { background: color-mix(in srgb, var(--ag-accent) 12%, transparent); }
+
+.pick {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 7px 12px;
+  cursor: pointer;
+  border: none;
+  border-left: 2px solid transparent;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: var(--vscode-foreground);
+  transition: background var(--ag-dur) var(--ag-ease);
+}
+
+/* The old hover was a barely-visible tint. A row you are about to click
+   should be unmistakable, and keyboard focus gets the same treatment. */
+.pick:hover,
+.pick:focus-visible {
+  background: color-mix(in srgb, var(--vscode-foreground) 9%, transparent);
+  border-left-color: color-mix(in srgb, var(--ag-accent) 60%, transparent);
+  outline: none;
+}
+
+.pick.on { border-left-color: var(--ag-accent); }
+.pick.on { color: var(--ag-accent); }
+
+.pickico {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  align-self: center;
+  color: var(--muted);
+  transition: color var(--ag-dur) var(--ag-ease);
+}
+
+.pick:hover .pickico { color: var(--vscode-foreground); }
+.pick.on .pickico { color: var(--ag-accent); }
+
+.pick .name { flex: none; font-size: 12px; }
+
+.pick .meta {
+  flex: 1;
+  color: var(--muted);
+  font-size: 10.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* TUI-only slash commands: shown for discovery, marked so nobody expects them
+   to execute in a print-mode panel. */
+.pick .tui {
+  flex: none;
+  font-size: 9.5px;
+  color: var(--muted);
+  border: 1px solid var(--hairline);
+  border-radius: 3px;
+  padding: 0 3px;
+}
+
+.picker-hint {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 10px;
+  opacity: 0.85;
+}
+
+.picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 12px;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 1px solid var(--hairline);
+}
+
+/* ---------- slider + switch (choices that are not lists) ---------- */
+
+.picker-custom { padding: 12px 14px 13px; }
+
+/* A control living on its row, pinned right. The row aligns on baseline for
+   text, so the control opts into centre alignment for itself. */
+.rowcontrol {
+  flex: none;
+  display: flex;
+  align-items: center;
+  align-self: center;
+  margin-left: auto;
+  padding-left: 10px;
+}
+
+.rowcontrol .switch { width: 30px; height: 17px; }
+.rowcontrol .switch .knob { width: 12px; height: 12px; top: 1.5px; left: 2px; }
+.rowcontrol .switch.on .knob { transform: translateX(12px); }
+
+/* History rows: the prompt can be long, the timestamp never is. Pin the time
+   right and let the name take the space that is left. */
+.picker[data-kind="past"] .pick { align-items: center; }
+.picker[data-kind="past"] .name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.picker[data-kind="past"] .meta {
+  flex: none;
+  margin-left: auto;
+  padding-left: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The row is not going anywhere when you click its control, so it must not
+   flash the row-hover affordance either. */
+.pick:has(.rowcontrol):hover { border-left-color: transparent; }
+
+.slider {
+  position: relative;
+  display: inline-block;
+  width: 82px;
+  height: 16px;
+  cursor: pointer;
+  touch-action: none;          /* the knob owns horizontal drags */
+}
+
+.slider-track {
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  top: 50%;
+  height: 2px;
+  margin-top: -1px;
+  border-radius: 2px;
+  background: var(--ctl-line);
+}
+
+/* Stops are marks, not targets. The knob is the thing you aim at. */
+.slider-dot {
+  position: absolute;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  margin: -2px 0 0 -2px;
+  border-radius: 50%;
+  background: var(--ctl-edge);
+}
+
+.slider-knob {
+  position: absolute;
+  left: var(--pos, 0%);
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--vscode-foreground) 88%, transparent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+  transition: left var(--ag-dur) var(--ag-ease),
+              box-shadow var(--ag-dur) var(--ag-ease);
+}
+
+.slider:hover .slider-knob,
+.slider:focus-visible .slider-knob {
+  background: var(--vscode-foreground);
+}
+
+.slider:focus-visible { outline: none; }
+.slider:focus-visible .slider-knob {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ag-accent) 45%, transparent);
+}
+
+/* No easing mid-drag: the knob has to sit under the pointer, not chase it. */
+.slider.dragging .slider-knob { transition: none; }
+
+.slider-label {
+  margin-top: 9px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.switchrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.switchlabel { font-size: 11.5px; color: var(--vscode-foreground); }
+
+.switch {
+  flex: none;
+  width: 32px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--ctl-edge);
+  border-radius: 999px;
+  background: var(--ctl-fill);
+  cursor: pointer;
+  position: relative;
+  transition: background var(--ag-dur) var(--ag-ease),
+              border-color var(--ag-dur) var(--ag-ease);
+}
+
+.switch .knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  /* The knob is the part that says on or off at a glance, so it stays bright
+     in both states rather than fading into the track. */
+  background: color-mix(in srgb, var(--vscode-foreground) 75%, transparent);
+  transition: transform var(--ag-dur) var(--ag-ease),
+              background var(--ag-dur) var(--ag-ease);
+}
+
+.switch.on {
+  background: color-mix(in srgb, var(--ag-accent) 30%, transparent);
+  border-color: var(--ag-accent);
+}
+
+.switch.on .knob { transform: translateX(14px); background: var(--ag-accent); }
+
+/* ---------- message log ---------- */
+
+.log {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--pad);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ---------- turn rail ----------
+ * A 1px rail down the conversation with a dot per turn — the Claude/Grok
+ * visual language. The dots mark TURNS, which genuinely exist. They are
+ * deliberately not per-tool-call: agy streams no tool events (verified — zero
+ * stderr progress lines), so a dot per "tool" would be invented. */
+
+.turn {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  /* The dot hangs in a gutter LEFT of the content column. At padding-left:16px
+     with the dot at left:0 it sat flush against the panel edge, which read as
+     no inset at all. */
+  padding-left: var(--ag-turn-indent);
+}
+
+.turn::before {
+  content: "";
+  position: absolute;
+  left: calc(var(--ag-rail) + 3px);   /* centred under the 7px dot */
+  top: 0;
+  bottom: -10px;      /* bridge the flex gap to the next turn */
+  width: 1px;
+  background: var(--hairline);
+}
+
+/* Cap the rail at the ends so it reads as a thread, not a stray line. */
+.turn:first-child::before { top: 7px; }
+.turn:last-child::before { bottom: auto; height: 7px; }
+.turn:first-child:last-child::before { display: none; }
+
+.turn > .role::before {
+  content: "";
+  position: absolute;
+  left: var(--ag-rail);
+  top: 4px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+  opacity: 0.55;
+}
+
+.turn.user > .role::before { opacity: 0.35; }
+
+.turn.assistant > .role::before {
+  background: var(--ag-accent);
+  opacity: 0.9;
+}
+
+.turn.error > .role::before {
+  background: var(--vscode-errorForeground, #f14c4c);
+  opacity: 1;
+}
+
+/* While a turn is thinking its dot pulses — the only live signal agy gives. */
+.turn[data-thinking] > .role::before {
+  background: var(--ag-accent);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.role {
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.turn.user .role { color: color-mix(in srgb, var(--vscode-foreground) 70%, var(--muted)); }
+
+.bubble {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.turn.user .bubble {
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  padding: 7px 10px;
+}
+
+.turn.assistant .bubble {
+  padding: 1px 0;
+  white-space: normal; /* rendered markdown, not preformatted text */
+}
+
+/* ---------- tool rows (real, from agy's step events) ---------- */
+
+.turn.tool { padding-left: var(--ag-turn-indent); gap: 0; }
+
+.turn.tool .role {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 11.5px;
+}
+
+.toolname {
+  color: var(--vscode-foreground);
+  font-family: var(--vscode-editor-font-family, var(--ag-mono));
+  font-size: 11px;
+}
+
+.toolmeta { color: var(--muted); font-size: 10.5px; }
+
+/* The dot states mirror what agy reported: running, finished, failed. */
+.turn.tool[data-state="active"] > .role::before {
+  background: var(--ag-accent);
+  opacity: 1;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+.turn.tool[data-state="done"] > .role::before { background: var(--ag-accent); opacity: 0.85; }
+.turn.tool[data-state="error"] > .role::before { background: var(--ag-red); opacity: 1; }
+
+/* ---------- token usage ---------- */
+
+.usage {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  margin-right: 2px;
+  /* Yield the composer row first. Token counts are the least urgent thing
+     there, and holding full width truncated every chip beside them into
+     "gemini-3...", "Mediu", "Autc" on a 440px panel. */
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* A filled ring marks that a turn reported usage — a small, honest presence
+   indicator, not a percentage of a context window we were never told. */
+.usage::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 2px solid var(--ag-accent);
+  opacity: 0.85;
+  flex: none;
+}
+
+.usage[hidden] { display: none; }
+
+/* Actions under a finished answer. Hidden until the turn is hovered so the
+   transcript stays quiet, but always reachable by keyboard. */
+.turn-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+  opacity: 0;
+  transition: opacity var(--ag-dur) var(--ag-ease);
+}
+
+.turn:hover .turn-actions,
+.turn-actions:focus-within { opacity: 1; }
+
+.turn-action {
+  padding: 1px 8px;
+  font: inherit;
+  font-size: 10.5px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.turn-action:hover { color: var(--vscode-foreground); border-color: var(--border); }
+
+/* The icon variant is square and borderless — a pill labelled "Copy" under
+   every answer competes with the answer. */
+.turn-action.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius);
+  transition: color var(--ag-dur) var(--ag-ease),
+              background var(--ag-dur) var(--ag-ease);
+}
+.turn-action.icon:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.15));
+}
+.turn-action.icon.done { color: var(--ag-accent); }
+
+/* ---------- generated / referenced media ---------- */
+
+.media {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.mediaitem {
+  margin: 0;
+  max-width: 100%;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--vscode-editor-background);
+}
+.mediaitem img,
+.mediaitem video {
+  display: block;
+  /* Cap the height, not the width: a tall portrait render would otherwise
+     push the rest of the turn off-screen. */
+  max-width: 100%;
+  max-height: 260px;
+  object-fit: contain;
+}
+.mediaitem figcaption {
+  padding: 3px 7px 4px;
+  font-size: 10px;
+  color: var(--muted);
+  border-top: 1px solid var(--hairline);
+  word-break: break-all;
+}
+
+/* ---------- rendered markdown ---------- */
+
+.bubble p { margin: 0 0 8px; }
+.bubble p:last-child { margin-bottom: 0; }
+.bubble h3, .bubble h4, .bubble h5, .bubble h6 {
+  margin: 10px 0 5px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.bubble ul, .bubble ol { margin: 0 0 8px; padding-left: 18px; }
+.bubble li { margin: 2px 0; }
+.bubble strong { font-weight: 600; color: var(--vscode-foreground); }
+
+.bubble code {
+  font-family: var(--vscode-editor-font-family, var(--ag-mono));
+  font-size: 11.5px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--vscode-foreground) 10%, transparent);
+}
+
+.md-url { color: var(--muted); font-size: 11px; }
+
+/* Code block: header strip with language + Copy, like Claude/Grok. */
+.md-code {
+  margin: 8px 0;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ag-radius-md);
+  overflow: hidden;
+  background: var(--vscode-textCodeBlock-background, var(--surface));
+}
+
+.md-code-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--surface-soft);
+}
+
+.md-lang {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  flex: 1;
+}
+
+.md-copy {
+  margin-left: auto;
+  padding: 1px 7px;
+  font: inherit;
+  font-size: 10.5px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.md-copy:hover { color: var(--vscode-foreground); border-color: var(--border); }
+
+.md-code pre {
+  margin: 0;
+  padding: 8px 10px;
+  overflow-x: auto;          /* long lines scroll, never widen the sidebar */
+}
+
+.md-code code {
+  padding: 0;
+  background: none;
+  font-size: 11.5px;
+  line-height: 1.45;
+  white-space: pre;
+}
+
+.turn.error .bubble {
+  color: var(--vscode-errorForeground, #f14c4c);
+  border-left: 2px solid var(--vscode-errorForeground, #f14c4c);
+  padding-left: 8px;
+  font-size: 12px;
+}
+
+/* streaming caret on the live assistant bubble */
+.bubble.streaming::after {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 14px;
+  margin-left: 1px;
+  transform: translateY(2px);
+  background: var(--vscode-foreground);
+  opacity: 0.65;
+  animation: caret 1s steps(1) infinite;
+}
+
+@keyframes caret { 50% { opacity: 0; } }
+
+/* ---------- thinking dots (grok-style) ---------- */
+
+.thinking {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.dots { display: inline-flex; gap: 3px; }
+
+.dots span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.35;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.dots span:nth-child(2) { animation-delay: 0.18s; }
+.dots span:nth-child(3) { animation-delay: 0.36s; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.25; transform: translateY(0); }
+  50% { opacity: 0.9; transform: translateY(-1px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dots span, .bubble.streaming::after { animation: none; }
+}
+
+.empty {
+  margin: auto;
+  max-width: 240px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.empty b { color: var(--vscode-foreground); font-weight: 600; }
+
+/* Which build is running. Small, but it turns "is this shipped?" into a
+   glance instead of a round-trip. */
+.empty-ver {
+  margin-top: 14px;
+  font-size: 10px;
+  color: var(--muted);
+  opacity: 0.6;
+}
+
+.empty-repo {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+.empty-repo:hover {
+  color: var(--vscode-foreground);
+  border-bottom-color: currentColor;
+}
+
+/* ---------- composer ---------- */
+
+.composer {
+  flex: none;
+  padding: 8px var(--pad) 10px;
+}
+
+/* One bordered box holds the text and its tools, the way Claude Code does it —
+   the controls read as part of the prompt, not a separate toolbar. Geometry is
+   matched to Claude's composer: 12px radius, roomy padding, 8px inner gutter. */
+.inputwrap {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--vscode-input-background);
+  padding: 9px 10px 7px;
+}
+
+.inputwrap:focus-within {
+  border-color: color-mix(in srgb, var(--vscode-focusBorder) 70%, var(--border));
+}
+
+#input {
+  display: block;
+  width: 100%;
+  resize: none;
+  min-height: 38px;
+  max-height: 40vh;
+  padding: 0 26px 8px 2px;   /* right gutter clears the mic */
+  font: inherit;
+  line-height: 1.45;
+  color: var(--vscode-input-foreground);
+  background: transparent;
+  border: none;
+  outline: none;
+}
+
+#input::placeholder { color: var(--muted); opacity: 0.75; }
+
+/* ---------- pasted / attached images ---------- */
+
+.tray {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 6px;
+}
+
+.tray[hidden] { display: none; }
+
+.chipimg {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 160px;
+  padding: 2px 4px 2px 2px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--ag-radius-md);
+  background: var(--surface);
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.chipimg img {
+  width: 22px;
+  height: 22px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex: none;
+}
+
+.chipname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.chipx {
+  flex: none;
+  padding: 0 3px;
+  font: inherit;
+  line-height: 1;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.chipx:hover { color: var(--vscode-foreground); }
+
+/* Thumbnails inside a sent turn, so the transcript shows what agy received. */
+.turnimgs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 5px;
+}
+
+.turnimgs img {
+  max-width: 160px;
+  max-height: 120px;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+}
+
+/* Mic sits in the top-right of the text area, as in Claude Code. */
+.micbtn {
+  position: absolute;
+  top: 7px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.micbtn:hover {
+  color: var(--vscode-foreground);
+  background: color-mix(in srgb, var(--vscode-foreground) 10%, transparent);
+}
+
+.micbtn.rec { color: var(--vscode-errorForeground, #f14c4c); }
+
+.tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.grow { flex: 1; }
+
+.toolbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  /* These were muted grey at 14px and simply hard to find. They are the two
+     entry points to attachments and commands, so they read at full contrast. */
+  color: color-mix(in srgb, var(--vscode-foreground) 78%, transparent);
+  background: transparent;
+  border: none;
+  border-radius: var(--ag-radius-md);
+  cursor: pointer;
+}
+
+.toolbtn:hover {
+  color: var(--vscode-foreground);
+  background: color-mix(in srgb, var(--vscode-foreground) 14%, transparent);
+}
+
+.toolbtn:active { transform: scale(0.94); }
+
+.ico { width: 17px; height: 17px; flex: none; }
+
+.chipbtn .ico { width: 11px; height: 11px; margin-right: 3px; }
+
+.modelchip {
+  /* Never shrink: a half-rendered model name reads as a bug, and the usage
+     readout beside it is what gives way instead. */
+  flex: none;
+  font-size: 10.5px;
+  color: var(--muted);
+  padding: 1px 6px;
+  border-radius: 999px;
+  cursor: pointer;
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modelchip:hover { color: var(--vscode-foreground); background: var(--surface-soft); }
+
+/* Effort chip: a 3-bar gauge that fills to the level, so the value is legible
+   even when the label is squeezed out on a narrow panel. */
+.effortchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.effortchip .gauge { width: 11px; height: 11px; flex: none; }
+.effortchip .gauge rect { fill: currentColor; opacity: 0.25; }
+.effortchip[data-level="1"] .b1,
+.effortchip[data-level="2"] .b1,
+.effortchip[data-level="2"] .b2,
+.effortchip[data-level="3"] .b1,
+.effortchip[data-level="3"] .b2,
+.effortchip[data-level="3"] .b3 { opacity: 1; }
+.effortchip[data-level="3"] { color: var(--ag-accent); }
+
+/* Below ~230px of composer the labels collide with the send button; the gauge
+   still carries the value, so the word is what goes. */
+@media (max-width: 300px) {
+  .effortchip #effortText { display: none; }
+}
+
+/* Plan mode is the one worth flagging: it changes whether agy may write. */
+.modechip.on {
+  color: var(--ag-accent);
+  background: color-mix(in srgb, var(--ag-accent) 16%, transparent);
+}
+
+/* Circular arrow button — one flat accent fill. A gradient on a 26px circle
+   only reads as noise at that size. Set --pg-send to
+   var(--vscode-button-background) to follow the theme instead. */
+.sendbtn {
+  --pg-send: var(--ag-accent);
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  color: #fff;
+  background: var(--pg-send);
+  border: none;
+  /* The stop state adds a 1px border. Without border-box that grows the button
+     to 28px mid-turn and it visibly jumps. */
+  box-sizing: border-box;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: background var(--ag-dur) var(--ag-ease), opacity var(--ag-dur) var(--ag-ease);
+}
+
+.sendbtn:hover { filter: brightness(1.12); }
+
+/* Mid-turn the same button stops the run: a square glyph, muted, so it never
+   looks like "send again". */
+.sendbtn.stop {
+  background: var(--surface);
+  color: var(--vscode-foreground);
+  border: 1px solid var(--border);
+}
+
+/* Hide the whole glyph, not just its path. Leaving the 16px <svg> in the flex
+   flow meant justify-content centred the SVG and the square TOGETHER, which put
+   the square off to the right of the circle. */
+.sendbtn.stop .ico { display: none; }
+
+.sendbtn.stop::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: currentColor;
+}
+
+.bolt { width: 10px; height: 10px; margin-right: 3px; flex: none; }
+
+.modechip { display: inline-flex; align-items: center; }
+
+/* Reconnect while a turn is in flight: centred under the thinking row, where
+   someone staring at a stalled answer is already looking. */
+.inline-reconnect {
+  display: block;
+  margin: 8px auto 0;
+  padding: 2px 10px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.inline-reconnect:hover { color: var(--vscode-foreground); border-color: var(--border); }
+
+.chipbtn { display: inline-flex; align-items: center; }

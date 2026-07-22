@@ -1,0 +1,38 @@
+# Ship only what runs: compiled JS in out/, the webview assets, the icon.
+src/**
+tsconfig.json
+.eslintrc.json
+.github/**
+.vscode/**
+.vscode-test/**
+.git/**
+.gitignore
+.gitmodules
+node_modules/**
+package-lock.json
+**/*.ts
+**/*.map
+**/*.vsix
+
+# Never ship agent/tool scratch, history, or secrets.
+.history-memo
+.private/**
+.gstack/**
+.prgraf/**
+.serena/**
+.swarm/**
+.beads/**
+.claude
+CLAUDE.md
+GEMINI.md
+AGENTS.md
+
+# README screenshots are served from GitHub — vsce rewrites the relative links
+# — so only the icon needs to ship. Keeps the VSIX from carrying 1.5MB of PNG.
+images/**
+!images/icon.png
+!images/panel.svg
+
+# OS/logs
+.DS_Store
+*.log

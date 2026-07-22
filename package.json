@@ -1,0 +1,125 @@
+{
+  "name": "antigravity-chat",
+  "displayName": "Antigravity CLI Copilot",
+  "description": "Gemini chat in a VS Code side panel, powered by Google's Antigravity CLI (agy). Streaming replies, tool calls, inline images. Unofficial.",
+  "version": "3.5.0",
+  "publisher": "JacobTheJacobs",
+  "license": "MIT",
+  "icon": "images/icon.png",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Chat",
+    "Machine Learning"
+  ],
+  "keywords": [
+    "gemini",
+    "antigravity",
+    "agy",
+    "google",
+    "gemini cli",
+    "chat",
+    "ai",
+    "assistant",
+    "sidebar",
+    "ai chat",
+    "code assistant",
+    "mcp",
+    "agent",
+    "streaming"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "secondarySidebar": [
+        {
+          "id": "antigravity",
+          "title": "Antigravity",
+          "icon": "images/panel.svg"
+        }
+      ]
+    },
+    "views": {
+      "antigravity": [
+        {
+          "type": "webview",
+          "id": "antigravity.chat",
+          "name": "Antigravity"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Antigravity",
+      "properties": {
+        "antigravity.command": {
+          "type": "string",
+          "default": "agy",
+          "description": "Command or full path for the Antigravity CLI. Leave as 'agy' to auto-detect from ~/AppData/Local/agy/bin or PATH."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "antigravity.askAboutSelection",
+        "title": "Antigravity: Ask About Selection"
+      },
+      {
+        "command": "antigravity.newSession",
+        "title": "Antigravity: New Conversation"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "antigravity.askAboutSelection",
+          "when": "editorHasSelection",
+          "group": "navigation@1"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "antigravity.askAboutSelection",
+        "key": "ctrl+alt+a",
+        "mac": "cmd+alt+a",
+        "when": "editorHasSelection"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "18.x",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^8.39.0",
+    "@typescript-eslint/parser": "^8.39.0",
+    "eslint": "^8.56.0",
+    "typescript": "^5.3.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/JacobTheJacobs/vscode-antigravity.git"
+  },
+  "bugs": {
+    "url": "https://github.com/JacobTheJacobs/vscode-antigravity/issues"
+  },
+  "homepage": "https://github.com/JacobTheJacobs/vscode-antigravity#readme",
+  "author": {
+    "name": "JacobTheJacobs",
+    "url": "https://github.com/JacobTheJacobs"
+  },
+  "galleryBanner": {
+    "color": "#0B0F1C",
+    "theme": "dark"
+  },
+  "qna": "marketplace",
+  "pricing": "Free"
+}
