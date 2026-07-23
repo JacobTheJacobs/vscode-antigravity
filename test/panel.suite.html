@@ -49,7 +49,9 @@
   function check(label, fn, want) {
     let got;
     try { got = String(fn()); } catch (e) { got = 'THREW ' + e.message; }
-    const ok = want === undefined ? !/^(THREW|MISSING|NONE|0 )/.test(got) : got === want;
+    // String(want): got is already stringified, so a numeric expectation
+    // compared strictly could never match and every one read as a failure.
+    const ok = want === undefined ? !/^(THREW|MISSING|NONE|0 )/.test(got) : got === String(want);
     ok ? pass++ : fail++;
     log.push((ok ? 'PASS  ' : 'FAIL  ') + label + ': ' + got + (ok || want === undefined ? '' : '   [want ' + want + ']'));
   }
@@ -305,6 +307,49 @@
     document.getElementById('log').click();
     return 'open before=' + was + ', after=' + !PT().hidden;
   }, 'open before=true, after=false');
+
+  /* ---------------- RESUME / REPLAY ---------------- */
+  log.push('— resuming a conversation —');
+
+  check('a full replay shows both sides', () => {
+    reset();
+    __reply({type:'replay', id:'a', full:true, turns:[
+      {role:'user', text:'what is a mutex'},
+      {role:'assistant', text:'A **mutex** guards shared state.'},
+      {role:'user', text:'and a semaphore'},
+      {role:'assistant', text:'It counts permits.'}]});
+    return 'user=' + document.querySelectorAll('.turn.user').length +
+      ', assistant=' + document.querySelectorAll('.turn.assistant').length;
+  }, 'user=2, assistant=2');
+
+  check('a replayed answer renders its markdown', () =>
+    document.querySelectorAll('.turn.assistant strong').length, 1);
+
+  check('a full replay carries no apology note', () =>
+    document.querySelectorAll('.replay-note').length, 0);
+
+  check('replayed turns are dimmed as history', () =>
+    document.querySelectorAll('.turn.replayed').length, 4);
+
+  check('a partial replay shows tools and DOES explain itself', () => {
+    reset();
+    __reply({type:'replay', id:'b', turns:[
+      {role:'user', text:'list the folder'},
+      {role:'tool', text:'list_dir'}]});
+    return 'tools=' + document.querySelectorAll('.turn.tool').length +
+      ', note=' + document.querySelectorAll('.replay-note').length;
+  }, 'tools=1, note=1');
+
+  check('replaying twice does not stack headers', () => {
+    reset();
+    __reply({type:'replay', id:'c', full:true, turns:[{role:'user', text:'x'}]});
+    return document.querySelectorAll('.replay-head').length;
+  }, 1);
+
+  check('a new conversation clears a replay', () => {
+    __reply({type:'resumed', id:''});
+    return document.querySelectorAll('.replay-head, .turn.replayed').length;
+  }, 0);
 
   const out = document.createElement('pre');
   out.id = 'result';

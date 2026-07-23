@@ -523,6 +523,10 @@
         (msg.turns || []).forEach((t) => {
           if (t.role === "user") {
             addTurn("user", t.text).parentElement.classList.add("replayed");
+          } else if (t.role === "assistant") {
+            const b = addTurn("assistant", null);
+            b.innerHTML = window.AgyMarkdown.render(t.text);
+            b.parentElement.classList.add("replayed");
           } else {
             const row = document.createElement("div");
             row.className = "turn tool replayed";
@@ -532,12 +536,17 @@
             log.appendChild(row);
           }
         });
-        const note = document.createElement("div");
-        note.className = "replay-note";
-        note.textContent =
-          "agy stores prompts and tool calls, not its own replies — so the " +
-          "answers above are not shown. It still has the full history; keep asking.";
-        log.appendChild(note);
+        // Only say what is missing when something IS missing. A full replay
+        // needs no apology.
+        if (!msg.full) {
+          const note = document.createElement("div");
+          note.className = "replay-note";
+          note.textContent =
+            "This conversation was started outside the panel, so agy's transcript " +
+            "gives its prompts and tool calls but not its replies. It still has " +
+            "the full history; keep asking.";
+          log.appendChild(note);
+        }
         scroll();
         break;
       }

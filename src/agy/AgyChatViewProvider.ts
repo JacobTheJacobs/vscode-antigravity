@@ -62,6 +62,15 @@ export class AgyChatViewProvider implements vscode.WebviewViewProvider {
     private runStartedAt = 0;
     /** Set when any tool in this turn came back ERROR. */
     private toolDenied = false;
+    /**
+     * This turn's two sides, held until the conversation has an id.
+     *
+     * A fresh conversation does not have one until the process closes and
+     * captureTitle spots the new .db, which is AFTER the result arrives — so
+     * saving on the spot would file both turns under an empty key and lose
+     * them.
+     */
+    private pendingTurns: { role: string; text: string }[] = [];
 
     constructor(private readonly context: vscode.ExtensionContext) {}
 
@@ -207,6 +216,51 @@ export class AgyChatViewProvider implements vscode.WebviewViewProvider {
     }
 
     /**
+     * The panel's own record of turns it rendered.
+     *
+     * agy keeps prompts and tool calls in its transcript but not its replies —
+     * those live only in a protobuf blob inside a WAL-backed SQLite, which
+     * would mean shipping a WASM SQLite plus a decoder for an undocumented
+     * schema, and would rot on any agy release. The panel already HAS the
+     * answers at the moment it renders them, so it keeps them.
+     *
+     * Conversations started in the terminal still fall back to agy's
+     * transcript, which is why replayConversation stays.
+     */
+    private saveTurn(role: 'user' | 'assistant', text: string): void {
+        if (!text.trim()) { return; }
+        this.pendingTurns.push({ role, text });
+        if (this.conversationId) { this.flushTurns(); }
+    }
+
+    /** Write the buffered turns once the conversation has an id. */
+    private flushTurns(): void {
+        const id = this.conversationId;
+        if (!id || !this.pendingTurns.length) { return; }
+        const queued = this.pendingTurns;
+        this.pendingTurns = [];
+        const all = this.context.globalState.get<Record<string, { role: string; text: string }[]>>(
+            'antigravity.transcripts', {});
+        const turns = all[id] || [];
+        turns.push(...queued);
+        // Bounded on both axes: 60 turns per conversation, 40 conversations.
+        // globalState is not a database, and a runaway store would slow every
+        // activation.
+        all[id] = turns.slice(-60);
+        const ids = Object.keys(all);
+        if (ids.length > 40) {
+            for (const old of ids.slice(0, ids.length - 40)) { delete all[old]; }
+        }
+        this.context.globalState.update('antigravity.transcripts', all);
+    }
+
+    private savedTurns(id: string): { role: string; text: string }[] {
+        const all = this.context.globalState.get<Record<string, { role: string; text: string }[]>>(
+            'antigravity.transcripts', {});
+        return all[id] || [];
+    }
+
+    /**
      * Rebuild what a resumed conversation contained, from agy's transcript.
      *
      * The prompts and the tool calls are both in transcript.jsonl. The
@@ -220,6 +274,14 @@ export class AgyChatViewProvider implements vscode.WebviewViewProvider {
      */
     private replayConversation(id: string): void {
         if (!id) { return; }
+
+        // What the panel rendered itself, answers included.
+        const mine = this.savedTurns(id);
+        if (mine.length) {
+            this.post({ type: 'replay', id, turns: mine, full: true });
+            return;
+        }
+
         const file = path.join(brainDir(), id, '.system_generated', 'logs', 'transcript.jsonl');
         const turns: { role: string; text: string }[] = [];
         let raw = '';
@@ -650,6 +712,8 @@ export class AgyChatViewProvider implements vscode.WebviewViewProvider {
         titles[id] = prompt.replace(/\s+/g, ' ').trim().slice(0, 60);
         this.context.globalState.update('antigravity.titles', titles);
         this.conversationId = id; // later turns resume this exact conversation
+        // The id exists now, so the turns buffered during this run have a home.
+        this.flushTurns();
     }
 
     resolveWebviewView(view: vscode.WebviewView): void {
@@ -1014,6 +1078,7 @@ export class AgyChatViewProvider implements vscode.WebviewViewProvider {
             // text_delta arrived, so a normal turn is not rendered twice.
             const answer = String(r.response || '');
             this.post({ type: 'resultText', text: answer, status: r.status });
+            this.saveTurn('assistant', answer);
             // Say so. A turn where the tools were refused still reads as a
             // normal answer, and the user is left believing agy looked.
             if (this.toolDenied && !this.tools) {
@@ -1038,6 +1103,7 @@ export class AgyChatViewProvider implements vscode.WebviewViewProvider {
         this.kill(); // one turn at a time; a new send cancels an in-flight one
         this.runStartedAt = Date.now();
         this.toolDenied = false;
+        this.saveTurn('user', text);
 
         const cli = this.resolveAgy();
         if (!cli) {
