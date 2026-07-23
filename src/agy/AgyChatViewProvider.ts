@@ -62,6 +62,9 @@ export class AgyChatViewProvider implements vscode.WebviewViewProvider {
     private runStartedAt = 0;
     /** Set when any tool in this turn came back ERROR. */
     private toolDenied = false;
+    /** Set when a result event already reported a specific error, so the close
+     *  handler does not stack a generic one on top. */
+    private reportedError = false;
     /**
      * This turn's two sides, held until the conversation has an id.
      *
@@ -1152,6 +1155,32 @@ export class AgyChatViewProvider implements vscode.WebviewViewProvider {
         if (ev.event === 'result') {
             const r = ev.result || {};
             if (r.usage) this.post({ type: 'usage', usage: r.usage, final: true });
+
+            // agy reports its OWN errors here with status ERROR and an error
+            // string — invalid model, invalid effort, and the like. Without
+            // this the panel showed a blank answer or a bare "exited with code
+            // 1" and the real reason ("model ... is not recognized") was lost.
+            if (String(r.status).toUpperCase() === 'ERROR' && r.error) {
+                const err = String(r.error);
+                // Self-heal a stored model agy no longer accepts (a slug from an
+                // older build, e.g. "opus-4-6-thinking" without its claude-
+                // prefix). Clearing it falls back to agy's default next turn.
+                if (/model .* is not recognized|invalid model/i.test(err) && this.model) {
+                    this.context.globalState.update('antigravity.model', '');
+                    this.post({ type: 'models', models: [], current: '' });
+                    this.post({
+                        type: 'error',
+                        text: 'That model is not one agy offers any more, so it has been ' +
+                            'reset to the default. Pick one from the model menu and try again.',
+                    });
+                } else {
+                    // Keep only the first line; agy appends the full model list.
+                    this.post({ type: 'error', text: err.split(/\r?\n/)[0] });
+                }
+                this.reportedError = true;
+                return;
+            }
+
             // The full answer is repeated here. It is only used when no
             // text_delta arrived, so a normal turn is not rendered twice.
             const answer = String(r.response || '');
@@ -1180,6 +1209,7 @@ export class AgyChatViewProvider implements vscode.WebviewViewProvider {
         this.kill(); // one turn at a time; a new send cancels an in-flight one
         this.runStartedAt = Date.now();
         this.toolDenied = false;
+        this.reportedError = false;
         this.pendingPrompt = text;
         this.saveTurn('user', text);
 
@@ -1325,6 +1355,14 @@ export class AgyChatViewProvider implements vscode.WebviewViewProvider {
             // cannot prompt for. Without this branch the panel renders a blank
             // assistant bubble and looks broken for any prompt that reads a
             // file — which is most real questions.
+            // A result event already gave the specific reason (invalid model
+            // and the like); do not stack a generic "exited with code 1" on it.
+            if (this.reportedError) {
+                this.post({ type: 'done' });
+                this.current = undefined;
+                return;
+            }
+
             const denied = /auto-denied|no output produced/i.test(lastErr);
             if (denied && !produced) {
                 this.post({
