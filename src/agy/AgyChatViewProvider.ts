@@ -122,13 +122,26 @@ export class AgyChatViewProvider implements vscode.WebviewViewProvider {
         return this.context.globalState.get<boolean>('antigravity.toolsChosen', false);
     }
 
-    /** Start a fresh conversation (command palette + /clear). */
-    public newSession(): void {
+    /**
+     * Reset to a specific conversation ('' = fresh).
+     *
+     * Clears pendingTurns, which is the bug this centralises away: a turn
+     * buffered while a fresh conversation had no id would otherwise be flushed
+     * into whatever conversation the user switched to next, cross-contaminating
+     * the saved transcript.
+     */
+    private resetTo(id: string): void {
         this.kill();
         this.epoch++;
-        this.conversationId = '';
+        this.conversationId = id;
         this.started = false;
-        this.post({ type: 'resumed', id: '' });
+        this.pendingTurns = [];
+        this.post({ type: 'resumed', id });
+    }
+
+    /** Start a fresh conversation (command palette + /clear). */
+    public newSession(): void {
+        this.resetTo('');
     }
 
     /** Send a prompt from outside the panel (Ask About Selection). */
@@ -737,6 +750,10 @@ export class AgyChatViewProvider implements vscode.WebviewViewProvider {
 
     resolveWebviewView(view: vscode.WebviewView): void {
         this.view = view;
+        // The conversation survives a tab switch because the provider is
+        // registered with retainContextWhenHidden (see extension.ts). Retention
+        // is a registration option, not a webview.options one, so it is set
+        // there rather than here.
         view.webview.options = {
             enableScripts: true,
             localResourceRoots: [
@@ -867,22 +884,14 @@ export class AgyChatViewProvider implements vscode.WebviewViewProvider {
                 this.listSessions();
                 break;
             case 'resumeSession':
-                this.kill();
-                this.epoch++;
-                this.conversationId = String(msg.id || '');
-                this.started = false;
-                this.post({ type: 'resumed', id: this.conversationId });
+                this.resetTo(String(msg.id || ''));
                 // Show what the conversation contained. Picking one out of
                 // History used to leave the panel on its empty state, which
                 // read as "nothing happened" rather than "resumed".
                 this.replayConversation(this.conversationId);
                 break;
             case 'newSession':
-                this.kill();
-                this.epoch++;
-                this.conversationId = '';
-                this.started = false;
-                this.post({ type: 'resumed', id: '' });
+                this.resetTo('');
                 break;
             case 'attach':
                 this.attach();
@@ -1262,6 +1271,17 @@ export class AgyChatViewProvider implements vscode.WebviewViewProvider {
             this.current = undefined;
         });
         child.on('close', (code) => {
+            // Drain a final line with no trailing newline. NDJSON is split on
+            // \n, so a last line agy did not terminate — which can be the
+            // result event carrying the whole answer — would otherwise sit in
+            // the buffer unparsed: the reply lost, and never saved.
+            const tail = ndjson.trim();
+            ndjson = '';
+            if (tail) {
+                try { this.onEvent(JSON.parse(tail)); sawEvent = true; }
+                catch { this.post({ type: 'chunk', text: tail + '\n' }); }
+            }
+
             // The failure that matters most is invisible otherwise: agy exits 0
             // with EMPTY stdout when a tool needs a permission headless mode
             // cannot prompt for. Without this branch the panel renders a blank
