@@ -14,6 +14,7 @@
   // at the middle of an empty panel.
   let connState = "connecting";   // "connecting" | "ok" | "bad"
   let connDetail = "";
+  let connNotFound = false;   // agy is missing, not merely unresponsive
   let extVersion = "";
   let extAuthor = "";
 
@@ -64,7 +65,12 @@
       // Only a failure is worth words. A working connection says nothing.
       extra =
         '<div class="empty-conn bad">' + esc(connDetail || "agy did not respond") + "</div>" +
-        '<button class="empty-connect" type="button" data-act="connect">Connect</button>';
+        (connNotFound
+          // No agy at all: offer to install it, plus a quieter retry for anyone
+          // who just installed it in a terminal.
+          ? '<button class="empty-install" type="button" data-act="install">Install the Antigravity CLI</button>' +
+            '<button class="empty-connect ghost" type="button" data-act="connect">I already have it — reconnect</button>'
+          : '<button class="empty-connect" type="button" data-act="connect">Connect</button>');
     }
     log.innerHTML =
       '<div class="empty"><b>Antigravity</b><br>' +
@@ -124,6 +130,10 @@
 
   log.addEventListener("click", (e) => {
     if (e.target.closest('[data-act="connect"]')) { doConnect(); return; }
+    if (e.target.closest('[data-act="install"]')) {
+      vscode.postMessage({ type: "installAgy" });
+      return;
+    }
     if (e.target.closest('[data-act="repo"]')) {
       e.preventDefault();
       vscode.postMessage({ type: "openRepo" });
@@ -191,6 +201,35 @@
       setTimeout(() => { btn.innerHTML = ICON_COPY; btn.classList.remove("done"); }, 1200);
     });
     bar.appendChild(btn);
+    turn.appendChild(bar);
+  }
+
+  /* Accept / Edit / Reject under a plan, the way Claude Code gates one. */
+  function addPlanActions(bubble, raw) {
+    const turn = bubble.parentElement;
+    if (!turn || turn.querySelector(".plan-actions")) return;
+    const bar = document.createElement("div");
+    bar.className = "plan-actions";
+    const mk = (label, cls, fn) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "plan-btn " + cls;
+      b.textContent = label;
+      b.addEventListener("click", fn);
+      bar.appendChild(b);
+    };
+    mk("Accept & build", "accept", () => {
+      currentMode = "accept-edits";
+      paintMode();
+      vscode.postMessage({ type: "setMode", mode: "accept-edits" });
+      bar.remove();
+      input.value = "Go ahead and implement the plan above.";
+      submit();
+    });
+    mk("Edit plan", "edit", () => {
+      input.value = raw; autosize(); input.focus(); bar.remove();
+    });
+    mk("Reject", "reject", () => { bar.remove(); });
     turn.appendChild(bar);
   }
 
@@ -495,6 +534,15 @@
   window.addEventListener("message", (event) => {
     const msg = event.data || {};
     switch (msg.type) {
+      case "installing": {
+        connState = "connecting";
+        connDetail = msg.text || "";
+        if (!log.querySelector(".turn")) {
+          log.innerHTML = '<div class="empty"><b>Antigravity</b><br>' +
+            '<div class="empty-conn">' + esc(msg.text || "Installing…") + "</div></div>";
+        }
+        break;
+      }
       case "toolsNotice": {
         // A statement of what is on, not an error. It sits in the empty state's
         // place on first open and is gone the moment a turn starts.
@@ -587,6 +635,7 @@
         } else {
           connected = false;
           connState = "bad";
+          connNotFound = !!msg.notFound;
           connDetail = msg.detail || "agy did not respond";
         }
         // Repaint only while the panel is empty — never disturb a transcript.
@@ -805,6 +854,14 @@
           // Copy the raw markdown, not the rendered text: pasting an answer
           // elsewhere should keep its code fences and lists.
           addCopyAction(live, liveRaw);
+            // In Plan mode the answer IS a plan, so offer plan actions the
+            // way Claude Code gates one. agy prints the plan and stops, with
+            // no approve signal to send, so these run on real primitives:
+            // Accept switches to build mode and continues the same
+            // conversation, which already holds the plan.
+            if (currentMode === "plan" && !msg.stopped) {
+              addPlanActions(live, liveRaw);
+            }
         }
         liveRaw = "";
         stopElapsed();

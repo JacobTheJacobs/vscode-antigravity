@@ -2,7 +2,7 @@
   "name": "antigravity-chat",
   "displayName": "Antigravity CLI Copilot",
   "description": "Gemini chat in a VS Code side panel, powered by Google's Antigravity CLI (agy). Streaming replies, tool calls, inline images. Unofficial.",
-  "version": "3.8.4",
+  "version": "3.9.0",
   "publisher": "JacobTheJacobs",
   "license": "MIT",
   "icon": "images/icon.png",

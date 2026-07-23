@@ -944,6 +944,22 @@ export class AgyChatViewProvider implements vscode.WebviewViewProvider {
                 }
                 break;
             }
+            case 'installAgy': {
+                const term = vscode.window.createTerminal('Install Antigravity CLI');
+                term.show();
+                // The exact command Google's docs give per platform. PowerShell
+                // on Windows; the shell installer elsewhere.
+                const cmd = IS_WIN
+                    ? 'irm https://antigravity.google/cli/install.ps1 | iex'
+                    : 'curl -fsSL https://antigravity.google/cli/install.sh | bash';
+                term.sendText(cmd, true);
+                this.post({
+                    type: 'installing',
+                    text: 'Running the official installer in a terminal. When it finishes, ' +
+                        'reload the window (or press Reconnect) and agy will be found.',
+                });
+                break;
+            }
             case 'openPermissions':
                 this.openPermissions();
                 break;
@@ -1048,9 +1064,8 @@ export class AgyChatViewProvider implements vscode.WebviewViewProvider {
             this.post({
                 type: 'status',
                 connected: false,
-                detail:
-                    'agy not found. Install the Antigravity CLI, or set ' +
-                    'antigravity.command to its full path.',
+                notFound: true,
+                detail: 'The Antigravity CLI (agy) is not installed, or is not on your PATH.',
             });
             return;
         }

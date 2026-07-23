@@ -215,6 +215,18 @@ body {
 }
 .queueitem .qx:hover { color: var(--vscode-foreground); }
 
+/* Accept / Edit / Reject under a plan. */
+.plan-actions { display: flex; gap: 6px; margin: 8px 0 2px var(--ag-turn-indent); }
+.plan-btn {
+  padding: 4px 12px; font: inherit; font-size: 11.5px; font-weight: 560;
+  border-radius: 6px; cursor: pointer; border: 1px solid var(--border);
+  background: var(--surface); color: var(--vscode-foreground);
+}
+.plan-btn.accept { background: var(--ag-accent); border-color: var(--ag-accent); color: #fff; }
+.plan-btn.accept:hover { filter: brightness(1.1); }
+.plan-btn.edit:hover, .plan-btn.reject:hover { border-color: var(--vscode-foreground); }
+.plan-btn.reject { color: var(--muted); }
+
 /* First-run statement about tool access. Quieter than an error, because
    nothing has gone wrong — it is telling you what the panel can do. */
 .tools-notice {
@@ -919,6 +931,30 @@ body {
   font-size: 10px;
   color: var(--muted);
   opacity: 0.6;
+}
+
+.empty-install {
+  margin-top: 14px;
+  padding: 7px 16px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--ag-accent);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.empty-install:hover { filter: brightness(1.1); }
+.empty-connect.ghost {
+  display: block;
+  margin: 8px auto 0;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 11px;
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 .empty-repo {
