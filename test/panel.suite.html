@@ -369,12 +369,25 @@
 
   check('a partial replay shows tools and DOES explain itself', () => {
     reset();
-    __reply({type:'replay', id:'b', turns:[
+    __reply({type:'replay', id:'b', origin:'terminal', turns:[
       {role:'user', text:'list the folder'},
       {role:'tool', text:'list_dir'}]});
     return 'tools=' + document.querySelectorAll('.turn.tool').length +
       ', note=' + document.querySelectorAll('.replay-note').length;
   }, 'tools=1, note=1');
+
+  check('a terminal origin says it was run in the terminal', () => {
+    reset();
+    __reply({type:'replay', id:'t', origin:'terminal', turns:[{role:'user', text:'x'}]});
+    return document.querySelector('.replay-note').textContent.indexOf('terminal') >= 0;
+  }, 'true');
+
+  check('a panel origin does NOT blame the terminal', () => {
+    reset();
+    __reply({type:'replay', id:'p', origin:'panel', turns:[{role:'user', text:'x'}]});
+    const t = document.querySelector('.replay-note').textContent;
+    return 'terminal=' + (t.indexOf('terminal') >= 0) + ', before=' + (t.indexOf('before this update') >= 0);
+  }, 'terminal=false, before=true');
 
   check('replaying twice does not stack headers', () => {
     reset();

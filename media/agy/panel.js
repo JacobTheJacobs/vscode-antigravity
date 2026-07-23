@@ -552,10 +552,15 @@
         if (!msg.full) {
           const note = document.createElement("div");
           note.className = "replay-note";
-          note.textContent =
-            "This conversation was started outside the panel, so agy's transcript " +
-            "gives its prompts and tool calls but not its replies. It still has " +
-            "the full history; keep asking.";
+          note.textContent = msg.origin === "panel"
+            // We started it, but before the panel kept its own replies. Do not
+            // call it a terminal conversation — that is what confused people.
+            ? "Replies from before this update were not saved, so only the " +
+              "prompts and tool calls are shown here. New turns are kept in " +
+              "full — keep going."
+            : "This one was run in the terminal, so agy's transcript has its " +
+              "prompts and tool calls but not its replies. It still has the " +
+              "full history; keep asking.";
           log.appendChild(note);
         }
         scroll();

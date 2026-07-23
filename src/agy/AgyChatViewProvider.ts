@@ -319,7 +319,13 @@ export class AgyChatViewProvider implements vscode.WebviewViewProvider {
             }
             if (turns.length >= 200) { break; }
         }
-        if (turns.length) { this.post({ type: 'replay', id, turns }); }
+        if (turns.length) {
+            const titles = this.context.globalState.get<Record<string, string>>('antigravity.titles', {});
+            // Panel-started but from a build before it saved replies, vs a
+            // conversation genuinely run in the terminal. Different sentence.
+            const known = Object.prototype.hasOwnProperty.call(titles, id);
+            this.post({ type: 'replay', id, turns, origin: known ? 'panel' : 'terminal' });
+        }
     }
 
     /**
