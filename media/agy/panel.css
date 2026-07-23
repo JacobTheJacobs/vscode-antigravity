@@ -215,6 +215,28 @@ body {
 }
 .queueitem .qx:hover { color: var(--vscode-foreground); }
 
+/* Replayed history is dimmed: it is context, not this session's work. */
+.replay-head {
+  padding: 2px 0 6px var(--ag-turn-indent);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  opacity: 0.75;
+}
+
+.turn.replayed { opacity: 0.62; }
+.turn.replayed .bubble { background: transparent; }
+
+.replay-note {
+  margin: 4px 0 2px;
+  padding: 6px 10px 6px var(--ag-turn-indent);
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--muted);
+  border-top: 1px solid var(--hairline);
+}
+
 /* ---------- picker: models, history, slash commands ---------- */
 
 /* Anchored directly above the composer, the way Claude Code opens its action

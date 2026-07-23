@@ -511,6 +511,36 @@
         b.parentElement.appendChild(fix);
         break;
       }
+      case "replay": {
+        // The prompts and tool calls agy kept. Its own answers are not in the
+        // transcript, so the panel says so rather than implying an empty
+        // conversation.
+        clearEmpty();
+        const head = document.createElement("div");
+        head.className = "replay-head";
+        head.textContent = "Earlier in this conversation";
+        log.appendChild(head);
+        (msg.turns || []).forEach((t) => {
+          if (t.role === "user") {
+            addTurn("user", t.text).parentElement.classList.add("replayed");
+          } else {
+            const row = document.createElement("div");
+            row.className = "turn tool replayed";
+            row.dataset.state = "done";
+            row.innerHTML = '<div class="role"><span class="toolname"></span></div>';
+            row.querySelector(".toolname").textContent = t.text;
+            log.appendChild(row);
+          }
+        });
+        const note = document.createElement("div");
+        note.className = "replay-note";
+        note.textContent =
+          "agy stores prompts and tool calls, not its own replies — so the " +
+          "answers above are not shown. It still has the full history; keep asking.";
+        log.appendChild(note);
+        scroll();
+        break;
+      }
       case "media":
         showMedia(msg.items);
         break;

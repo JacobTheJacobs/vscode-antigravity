@@ -207,6 +207,47 @@ export class AgyChatViewProvider implements vscode.WebviewViewProvider {
     }
 
     /**
+     * Rebuild what a resumed conversation contained, from agy's transcript.
+     *
+     * The prompts and the tool calls are both in transcript.jsonl. The
+     * assistant's prose is NOT — neither transcript.jsonl nor
+     * transcript_full.jsonl carries it, and the SQLite store keeps its rows in
+     * a WAL, so reading it would mean shipping a SQLite driver the extension
+     * host does not have (node:sqlite is Node 22+, VS Code is on 18/20).
+     *
+     * So this replays what exists and the panel says what is missing. Half a
+     * transcript with a note beats an empty panel that looks broken.
+     */
+    private replayConversation(id: string): void {
+        if (!id) { return; }
+        const file = path.join(brainDir(), id, '.system_generated', 'logs', 'transcript.jsonl');
+        const turns: { role: string; text: string }[] = [];
+        let raw = '';
+        try { raw = fs.readFileSync(file, 'utf8'); } catch { return; }
+
+        for (const line of raw.split(/\r?\n/)) {
+            const t = line.trim();
+            if (!t.startsWith('{')) { continue; }
+            let rec: { type?: string; content?: unknown; tool_calls?: unknown };
+            try { rec = JSON.parse(t); } catch { continue; }
+
+            if (rec.type === 'USER_INPUT' && typeof rec.content === 'string') {
+                // Only the request. The metadata blocks agy appends are its
+                // own bookkeeping, not anything the user typed.
+                const m = /<USER_REQUEST>([\s\S]*?)<\/USER_REQUEST>/.exec(rec.content);
+                const text = (m ? m[1] : rec.content).replace(/\s+/g, ' ').trim();
+                if (text) { turns.push({ role: 'user', text }); }
+            } else if (rec.type === 'PLANNER_RESPONSE' && Array.isArray(rec.tool_calls)) {
+                for (const call of rec.tool_calls as { name?: string }[]) {
+                    if (call && call.name) { turns.push({ role: 'tool', text: String(call.name) }); }
+                }
+            }
+            if (turns.length >= 200) { break; }
+        }
+        if (turns.length) { this.post({ type: 'replay', id, turns }); }
+    }
+
+    /**
      * Past conversations, newest first.
      *
      * Read from agy's own store rather than a list we maintain, so sessions
@@ -730,14 +771,15 @@ export class AgyChatViewProvider implements vscode.WebviewViewProvider {
                 this.listSessions();
                 break;
             case 'resumeSession':
-                // Resuming replaces the transcript: the panel can only show
-                // turns it rendered, so pretending the old ones are here would
-                // be a lie. agy still has the full history via --conversation.
                 this.kill();
                 this.epoch++;
                 this.conversationId = String(msg.id || '');
                 this.started = false;
                 this.post({ type: 'resumed', id: this.conversationId });
+                // Show what the conversation contained. Picking one out of
+                // History used to leave the panel on its empty state, which
+                // read as "nothing happened" rather than "resumed".
+                this.replayConversation(this.conversationId);
                 break;
             case 'newSession':
                 this.kill();
