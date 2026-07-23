@@ -495,6 +495,17 @@
   window.addEventListener("message", (event) => {
     const msg = event.data || {};
     switch (msg.type) {
+      case "toolsNotice": {
+        // A statement of what is on, not an error. It sits in the empty state's
+        // place on first open and is gone the moment a turn starts.
+        clearEmpty();
+        const n = document.createElement("div");
+        n.className = "tools-notice";
+        n.textContent = msg.text || "";
+        log.appendChild(n);
+        scroll();
+        break;
+      }
       case "toolsDenied": {
         const b = addTurn("error", msg.text || "A tool was denied.");
         const fix = document.createElement("button");

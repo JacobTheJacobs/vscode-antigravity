@@ -69,6 +69,12 @@ PTY. A follow-up waits for the turn instead of interrupting it.
 |---|---|---|
 | `antigravity.command` | `agy` | Full path to the CLI, if it isn't auto-detected from `~/AppData/Local/agy/bin` or `PATH`. |
 
+**Tool access** is on by default, so agy can read files and run commands in
+your workspace without asking each time. `agy` starts print mode in
+`request-review` and a panel cannot answer a permission prompt, so with it off
+every file read fails. Turn it off on the `/effort` menu; the choice is
+remembered.
+
 ## Notes
 
 Maintained by [JacobTheJacobs](https://github.com/JacobTheJacobs) ·

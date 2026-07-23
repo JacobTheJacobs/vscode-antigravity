@@ -308,6 +308,42 @@
     return 'open before=' + was + ', after=' + !PT().hidden;
   }, 'open before=true, after=false');
 
+  /* ---------------- TOOL ACCESS ---------------- */
+  log.push('— tool access —');
+
+  check('the first-run notice states what is on', () => {
+    reset();
+    __reply({type:'toolsNotice', text:'Tool access is on, so agy can read files.'});
+    const n = document.querySelector('.tools-notice');
+    return n ? n.textContent : 'MISSING';
+  }, 'Tool access is on, so agy can read files.');
+
+  check('it is a notice, not an error', () =>
+    document.querySelectorAll('.turn.error').length, 0);
+
+  check('it replaces the empty state rather than sitting under it', () =>
+    document.querySelectorAll('.empty').length, 0);
+
+  check('a turn clears it away', () => {
+    __reply({type:'chunk', text:'hi'}); __reply({type:'done'});
+    __reply({type:'resumed', id:''});
+    return document.querySelectorAll('.tools-notice').length;
+  }, 0);
+
+  check('the switch reports on by default', () => {
+    reset();
+    __reply({type:'modes', mode:'', effort:'', sandbox:false, tools:true, folders:0, open:'effort'});
+    const r = rows().filter(x => (x.querySelector('.name')||{}).textContent === 'Tool access')[0];
+    return r.querySelector('[data-toggle]').classList.contains('on');
+  }, 'true');
+
+  check('turning it off still posts the choice', () => {
+    const r = rows().filter(x => (x.querySelector('.name')||{}).textContent === 'Tool access')[0];
+    window.__sent.length = 0;
+    r.querySelector('[data-toggle]').click();
+    return JSON.stringify(window.__sent);
+  }, '[{"type":"setTools","on":false}]');
+
   /* ---------------- RESUME / REPLAY ---------------- */
   log.push('— resuming a conversation —');
 

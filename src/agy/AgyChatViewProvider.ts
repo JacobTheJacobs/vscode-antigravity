@@ -101,12 +101,25 @@ export class AgyChatViewProvider implements vscode.WebviewViewProvider {
      * list_dir:ERROR by default and list_dir:DONE with
      * --dangerously-skip-permissions, which flips the mode to always-proceed.
      *
-     * Off by default, because that flag auto-approves shell commands and file
-     * writes as well as reads. --mode accept-edits does NOT do this; it was
-     * checked and leaves permission_mode untouched.
+     * The flag auto-approves writes and shell commands as well as reads, which
+     * is why the panel says so on first use rather than leaving it to be
+     * discovered. --mode accept-edits does NOT do this; it was checked and
+     * leaves permission_mode untouched.
      */
     private get tools(): boolean {
-        return this.context.globalState.get<boolean>('antigravity.tools', false);
+        // Default ON. Off, the panel cannot read a file or run a command —
+        // which is most of what anyone opens it for — and the only recovery was
+        // to fail a turn, read an explanation, click a button and ask again.
+        // A tool-less agent is not a safer product, it is a broken one.
+        //
+        // Turning it OFF is remembered as a real choice: nothing here ever
+        // flips it back.
+        return this.context.globalState.get<boolean>('antigravity.tools', true);
+    }
+
+    /** Has the user ever made this choice themselves? */
+    private get toolsChosen(): boolean {
+        return this.context.globalState.get<boolean>('antigravity.toolsChosen', false);
     }
 
     /** Start a fresh conversation (command palette + /clear). */
@@ -756,6 +769,18 @@ export class AgyChatViewProvider implements vscode.WebviewViewProvider {
                     });
                 }
                 this.probe();
+                // Tool access is on unless it was turned off. Say so once,
+                // because "it can read my files" is the user's call to revisit,
+                // not a detail to discover from behaviour.
+                if (!this.toolsChosen) {
+                    this.post({
+                        type: 'toolsNotice',
+                        text: 'Tool access is on, so agy can read files and run commands in ' +
+                            'this workspace without asking each time. Turn it off in ' +
+                            '/effort if you would rather it could not.',
+                    });
+                    this.context.globalState.update('antigravity.toolsChosen', true);
+                }
                 break;
             case 'connect':
                 // Reconnect cancels whatever is in flight: the button exists to
@@ -800,6 +825,7 @@ export class AgyChatViewProvider implements vscode.WebviewViewProvider {
                 break;
             case 'setTools':
                 this.context.globalState.update('antigravity.tools', !!msg.on);
+                this.context.globalState.update('antigravity.toolsChosen', true);
                 this.postModes();
                 break;
             case 'setSandbox':
@@ -1084,10 +1110,9 @@ export class AgyChatViewProvider implements vscode.WebviewViewProvider {
             if (this.toolDenied && !this.tools) {
                 this.post({
                     type: 'toolsDenied',
-                    text: 'A tool was denied: agy starts in "request-review", and a ' +
-                        'webview cannot answer a permission prompt, so reading files ' +
-                        'and running commands failed. The answer above was written ' +
-                        'without them.',
+                    text: 'A tool was denied. Tool access is off, and agy cannot ask ' +
+                        'for permission from a panel — so reading files and running ' +
+                        'commands failed for this turn.',
                 });
             }
             // Scan the finished answer, not the deltas: a path can straddle two

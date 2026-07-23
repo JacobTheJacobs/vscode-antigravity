@@ -215,6 +215,19 @@ body {
 }
 .queueitem .qx:hover { color: var(--vscode-foreground); }
 
+/* First-run statement about tool access. Quieter than an error, because
+   nothing has gone wrong — it is telling you what the panel can do. */
+.tools-notice {
+  margin: 2px var(--pad) 6px;
+  padding: 8px 10px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--muted);
+  background: var(--ctl-fill);
+  border-left: 2px solid var(--ag-accent);
+  border-radius: 4px;
+}
+
 /* Replayed history is dimmed: it is context, not this session's work. */
 .replay-head {
   padding: 2px 0 6px var(--ag-turn-indent);
