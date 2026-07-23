@@ -42,3 +42,6 @@ test/**
 
 # Design reference the icon was drawn from, not a runtime asset.
 media/agy/image.png
+
+# Icon generator — a build tool, not shipped.
+scripts/**

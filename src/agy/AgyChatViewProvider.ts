@@ -71,6 +71,9 @@ export class AgyChatViewProvider implements vscode.WebviewViewProvider {
      * them.
      */
     private pendingTurns: { role: string; text: string }[] = [];
+    /** This turn's prompt, so the title can be set the moment the stream
+     *  reveals the conversation id. */
+    private pendingPrompt = '';
 
     constructor(private readonly context: vscode.ExtensionContext) {}
 
@@ -136,6 +139,7 @@ export class AgyChatViewProvider implements vscode.WebviewViewProvider {
         this.conversationId = id;
         this.started = false;
         this.pendingTurns = [];
+        this.pendingPrompt = '';
         this.post({ type: 'resumed', id });
     }
 
@@ -257,6 +261,32 @@ export class AgyChatViewProvider implements vscode.WebviewViewProvider {
         if (!text.trim()) { return; }
         this.pendingTurns.push({ role, text });
         if (this.conversationId) { this.flushTurns(); }
+    }
+
+    /**
+     * Learn the conversation id from agy's own stream.
+     *
+     * Replaces diffing the conversations directory for a new .db, which assumed
+     * exactly one appeared per turn. With tool access on, a turn spawns
+     * background tasks that create their own databases, so that assumption
+     * broke — the id was never captured, the title never set, and the buffered
+     * turns never flushed. Then resume read the conversation as "terminal" and
+     * showed no replies, for a conversation the panel had just run.
+     */
+    private adoptConversation(id: string): void {
+        if (!id || id === this.conversationId) { return; }
+        this.conversationId = id;
+        this.started = true;
+        // Title it from this turn's prompt if it has none yet, so History names
+        // it even though captureTitle's filesystem path no longer runs.
+        if (this.pendingPrompt) {
+            const titles = { ...this.context.globalState.get<Record<string, string>>('antigravity.titles', {}) };
+            if (!titles[id]) {
+                titles[id] = this.pendingPrompt.replace(/\s+/g, ' ').trim().slice(0, 60);
+                this.context.globalState.update('antigravity.titles', titles);
+            }
+        }
+        this.flushTurns();
     }
 
     /** Write the buffered turns once the conversation has an id. */
@@ -737,6 +767,9 @@ export class AgyChatViewProvider implements vscode.WebviewViewProvider {
         // The user reset the session while this run was closing — its id is no
         // longer the conversation they are looking at.
         if (epoch !== this.epoch) return;
+        // The stream is the primary source now (adoptConversation). This only
+        // runs when no id came through it, so it must not overwrite one.
+        if (this.conversationId) return;
         const fresh = this.conversationFiles().filter((f) => !before.has(f));
         if (fresh.length !== 1) return; // ambiguous — better no title than a wrong one
         const id = path.basename(fresh[0]).replace(/\.db$/, '');
@@ -1076,6 +1109,10 @@ export class AgyChatViewProvider implements vscode.WebviewViewProvider {
      * noise dressed as progress.
      */
     private onEvent(ev: any): void {
+        const cid = ev.init?.conversation_id || ev.step_update?.conversation_id ||
+            ev.result?.conversation_id;
+        if (cid) { this.adoptConversation(String(cid)); }
+
         if (ev.event === 'init') {
             this.post({
                 type: 'init',
@@ -1143,6 +1180,7 @@ export class AgyChatViewProvider implements vscode.WebviewViewProvider {
         this.kill(); // one turn at a time; a new send cancels an in-flight one
         this.runStartedAt = Date.now();
         this.toolDenied = false;
+        this.pendingPrompt = text;
         this.saveTurn('user', text);
 
         const cli = this.resolveAgy();
