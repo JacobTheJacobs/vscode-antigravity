@@ -74,7 +74,7 @@ svg = (
     '      <stop offset="1" stop-color="#7B4DFF" stop-opacity="0"/>\n'
     '    </radialGradient>\n'
     '  </defs>\n'
-    '  <rect width="256" height="256" rx="56" fill="url(#plate)"/>\n'
+    '  <rect width="256" height="256" fill="url(#plate)"/>\n'
     '  <circle cx="128" cy="104" r="92" fill="url(#halo)"/>\n'
     + '\n'.join('  ' + r for r in rects)
     + '\n</svg>\n'
