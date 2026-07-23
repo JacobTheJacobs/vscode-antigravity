@@ -39,3 +39,6 @@ images/**
 
 # Test suites are driven by a headless browser against media/, not shipped.
 test/**
+
+# Design reference the icon was drawn from, not a runtime asset.
+media/agy/image.png

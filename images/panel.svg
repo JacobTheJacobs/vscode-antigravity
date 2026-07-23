@@ -1,13 +1,12 @@
 <!--
-  The Marketplace icon reduced to what survives at 24px in a view-container tab:
-  the arc, the mass that has left it, and the ground it left. No gradient and no
-  plate — both turn to mush at this size — and currentColor throughout so VS
-  Code themes it like every other container icon.
+  Tab mark: the arch motif reduced to what reads at 24px in a view-container.
+  Flat currentColor, so VS Code themes it. Three squares at the crown echo the
+  pixel icon without the full grid, which turns to mush this small.
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
-  <path d="M4.2 19.2C4.2 10.4 7.2 6.4 12 6.4s7.8 4 7.8 12.8"
-        fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>
-  <circle cx="12" cy="3.1" r="1.8" fill="currentColor"/>
-  <rect x="8.2" y="21" width="7.6" height="1.6" rx="0.8"
-        fill="currentColor" opacity="0.45"/>
+  <path d="M4 20V13.2C4 8 7.4 5 12 5s8 3 8 8.2V20"
+        fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+  <rect x="10.6" y="2.6" width="2.8" height="2.8" rx="0.6" fill="currentColor"/>
+  <rect x="6.9" y="4.0" width="2.4" height="2.4" rx="0.5" fill="currentColor" opacity="0.7"/>
+  <rect x="14.7" y="4.0" width="2.4" height="2.4" rx="0.5" fill="currentColor" opacity="0.7"/>
 </svg>
