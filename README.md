@@ -3,7 +3,7 @@
 **Antigravity, in a real VS Code side panel.** Streaming replies, live tool
 calls, generated images inline. No terminal window, no browser tab.
 
-![The Antigravity side panel in VS Code streaming a reply, with a tool row, an inline generated image, and the slash command menu](images/demo.gif)
+![The Antigravity side panel in VS Code reading a file with list_dir and view_file, streaming a markdown answer with a code block, and a queued follow-up](images/demo.gif)
 
 ## Why you'll keep it open
 
