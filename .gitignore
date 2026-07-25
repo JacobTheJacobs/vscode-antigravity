@@ -1,0 +1,52 @@
+# Dependencies
+/node_modules
+
+# Build output
+/out
+
+# VSCode
+.vscode-test/
+.vscode-test.log
+.vscode/launch.json
+
+# macOS
+.DS_Store
+
+# TypeScript build info
+*.tsbuildinfo
+
+# ESLint cache
+.eslintcache
+
+# VSIX packages
+*.vsix
+
+# npm/yarn logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor directories
+.idea/
+*.swp
+*.swo
+*~
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# User data - history folders
+.history-memo
+.private
+
+# AI agent related files
+/dev-workspace
+.claude
+CLAUDE.md
+GEMINI.md
+AGENTS.md
+QWEN.md
+aidp
+.gstack/

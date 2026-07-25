@@ -1,0 +1,107 @@
+<!doctype html>
+<meta charset="utf-8"><link rel="stylesheet" href="ag.css">
+<style>:root{--vscode-foreground:#ccc;--vscode-descriptionForeground:#9d9d9d;
+  --vscode-editor-background:#1f1f1f;--vscode-sideBar-background:#181818;
+  --vscode-editorWidget-background:#202020;--vscode-editorWidget-border:#454545;
+  --vscode-input-background:#313131;color-scheme:dark;}
+  html,body{margin:0;background:#181818;font:13px "Segoe UI",sans-serif;color:#ccc;}
+  #root{width:400px;height:480px;display:flex;flex-direction:column;}</style>
+<div id="root">
+<div class="statusbar"><span class="grow"></span>
+  <button id="historyBtn" class="chipbtn icon" type="button"></button>
+  <button id="newBtn" class="chipbtn icon" type="button"></button></div>
+<div id="pickerTop" class="picker picker-top" hidden></div>
+<div id="log" class="log"></div>
+<div id="picker" class="picker" hidden></div>
+<form id="composer" class="composer"><div class="inputwrap">
+  <div id="queue" class="queue" hidden></div><div id="tray" class="tray" hidden></div>
+  <textarea id="input" rows="1" placeholder="Ask Antigravity…"></textarea>
+  <button id="micBtn" class="micbtn" type="button" hidden></button>
+  <div class="tools"><button id="plusBtn" class="toolbtn" type="button">+</button>
+  <button id="slashBtn" class="toolbtn" type="button">/</button><span class="grow"></span>
+  <span id="usage" class="usage" hidden></span><span id="modelBtn" class="modelchip">agy</span>
+  <span id="effortBtn" class="modelchip effortchip"><span id="effortText">Default</span></span>
+  <span id="modeBtn" class="modelchip modechip"><span id="modeText">Auto</span></span>
+  <button id="send" class="sendbtn" type="submit">&uarr;</button></div>
+</div></form></div>
+<script>
+  window.__sent=[]; window.acquireVsCodeApi=function(){return{postMessage:function(m){window.__sent.push(m);},getState:function(){return null;},setState:function(){}};};
+  window.__reply=function(m){window.dispatchEvent(new MessageEvent('message',{data:m}));};
+</script>
+<script src="markdown.js"></script><script src="panel.js"></script>
+<script>
+  const log=[]; let pass=0,fail=0;
+  function check(l,fn,w){let g;try{g=String(fn());}catch(e){g='THREW '+e.message;}
+    const ok=w===undefined?!/^THREW/.test(g):g===String(w);ok?pass++:fail++;
+    log.push((ok?'PASS  ':'FAIL  ')+l+': '+g+(ok||w===undefined?'':'   [want '+w+']'));}
+  const L=()=>document.getElementById('log');
+
+  check('agy-not-found shows an Install button', ()=>{
+    __reply({type:'status', connected:false, notFound:true, detail:'not installed'});
+    return L().querySelectorAll('.empty-install').length;
+  }, 1);
+  check('and a quieter "already have it" reconnect', ()=>
+    L().querySelectorAll('.empty-connect.ghost').length, 1);
+  check('clicking Install asks the host to run it', ()=>{
+    window.__sent.length=0;
+    L().querySelector('.empty-install').click();
+    return JSON.stringify(window.__sent);
+  }, '[{"type":"installAgy"}]');
+  check('a plain failure (agy present, unresponsive) shows Connect, NOT Install', ()=>{
+    __reply({type:'status', connected:false, detail:'no response'});
+    return 'install=' + L().querySelectorAll('.empty-install').length +
+      ', connect=' + L().querySelectorAll('.empty-connect').length;
+  }, 'install=0, connect=1');
+  check('the installing notice replaces the state', ()=>{
+    __reply({type:'installing', text:'Running the official installer in a terminal.'});
+    return L().textContent.indexOf('installer in a terminal') >= 0;
+  }, 'true');
+  check('connected clears everything', ()=>{
+    __reply({type:'status', connected:true, version:'1', path:'agy'});
+    return L().querySelectorAll('.empty-install, .empty-connect').length;
+  }, 0);
+
+
+  // ---- plan actions ----
+  const form = document.getElementById('composer');
+  function planTurn() {
+    __reply({type:'resumed', id:''});
+    __reply({type:'modes', mode:'plan', effort:'', sandbox:false, tools:true, folders:0});
+    __reply({type:'chunk', text:'## Plan\n1. do a thing\n2. do another'});
+    __reply({type:'done'});
+  }
+  check('a plan gets Accept / Edit / Reject', ()=>{
+    planTurn();
+    return Array.prototype.slice.call(document.querySelectorAll('.plan-btn')).map(b=>b.textContent).join(' / ');
+  }, 'Accept & build / Edit plan / Reject');
+  check('Accept switches to build mode and proceeds', ()=>{
+    window.__sent.length = 0;
+    document.querySelector('.plan-btn.accept').click();
+    const setMode = window.__sent.filter(m=>m.type==='setMode').map(m=>m.mode);
+    const sent = window.__sent.filter(m=>m.type==='send').map(m=>m.text);
+    return 'mode=' + JSON.stringify(setMode) + ', sent=' + JSON.stringify(sent);
+  }, 'mode=["accept-edits"], sent=["Go ahead and implement the plan above."]');
+  check('Edit loads the plan into the composer', ()=>{
+    planTurn();
+    document.querySelector('.plan-btn.edit').click();
+    return document.getElementById('input').value.indexOf('## Plan') === 0;
+  }, 'true');
+  check('Reject just dismisses, sends nothing', ()=>{
+    planTurn();
+    window.__sent.length = 0;
+    document.querySelector('.plan-btn.reject').click();
+    return 'buttons=' + document.querySelectorAll('.plan-btn').length + ', sent=' + window.__sent.length;
+  }, 'buttons=0, sent=0');
+  check('a NON-plan turn has no plan actions', ()=>{
+    __reply({type:'resumed', id:''});
+    __reply({type:'modes', mode:'', effort:'', sandbox:false, tools:true, folders:0});
+    __reply({type:'chunk', text:'just an answer'});
+    __reply({type:'done'});
+    return document.querySelectorAll('.plan-btn').length;
+  }, 0);
+
+  const out=document.createElement('pre'); out.id='result';
+  out.style.cssText='position:fixed;left:410px;top:0;color:#0f0;font:11px monospace;white-space:pre-wrap;width:560px';
+  out.textContent=log.join('\n')+'\n\n'+pass+' passed, '+fail+' failed';
+  document.body.appendChild(out);
+</script>
