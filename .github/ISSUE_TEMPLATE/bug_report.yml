@@ -1,0 +1,45 @@
+name: Bug report
+description: Report something that is broken
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the bug and what you expected instead.
+    validations:
+      required: true
+  - type: input
+    id: extension-version
+    attributes:
+      label: Extension version
+      placeholder: "4.1.0"
+  - type: input
+    id: vscode-version
+    attributes:
+      label: VS Code version
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+  - type: input
+    id: agy-version
+    attributes:
+      label: Antigravity CLI version
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Remove secrets, private prompts, and private file contents.
+
